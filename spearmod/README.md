@@ -1,23 +1,25 @@
 # Spear Mod
 
-Spear Mod —— Minecraft Fabric 小玩法模组。
+长枪武器及相关附魔。Minecraft 1.21.1 + Fabric。
+
+**当前只有骨架，功能待实现。**
 
 ## 构建
 
-本机没有系统 Java，先指定已安装的 JDK：
+在**仓库根**执行（不是在 mod 目录里，本模块没有自己的 gradlew）：
 
-```bash
-export JAVA_HOME="C:/Users/zhang/.jdks/jdk-25.0.5+8"
-./gradlew build
+```powershell
+$env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
+./gradlew :spearmod:build
 ```
 
-产物在 `build/libs/spearmod-<version>.jar`（不要用带 `-sources` 的那个）。
+产物在 `build/libs/spearmod-<version>.jar`，不要用带 `-sources` 的那个。
 
 ## 开发运行
 
-```bash
-export JAVA_HOME="C:/Users/zhang/.jdks/jdk-25.0.5+8"
-./gradlew runClient
+```powershell
+$env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
+./gradlew :spearmod:runClient
 ```
 
 ## 联机

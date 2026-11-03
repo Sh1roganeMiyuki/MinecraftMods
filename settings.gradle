@@ -1,0 +1,39 @@
+pluginManagement {
+	// Loom 的版本只能写在这里：Gradle 的 plugins {} 块不允许变量插值，
+	// 所以升级 Loom 就是改下面这一行，全仓库生效。
+	plugins {
+		id 'net.fabricmc.fabric-loom-remap' version '1.19.3'
+	}
+
+	repositories {
+		maven {
+			name = 'Aliyun Public'
+			url = 'https://maven.aliyun.com/repository/public'
+		}
+		maven {
+			name = 'Fabric Mirror'
+			url = 'https://repository.hanbings.io/proxy'
+		}
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'minecraftmods'
+
+// 自动发现子模块：凡是带 build.gradle 的一级子目录都算一个 mod。
+// 新增 mod 不需要改这个文件，多个分支并行开发时也就不会在这里撞车。
+// tools/ 是脚本目录，显式排除。
+file('.').eachDir { dir ->
+	def name = dir.name
+	if (name.startsWith('.') || name == 'tools') {
+		return
+	}
+	if (new File(dir, 'build.gradle').exists()) {
+		include ":$name"
+	}
+}

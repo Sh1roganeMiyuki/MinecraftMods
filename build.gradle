@@ -1,0 +1,122 @@
+// 全仓库公共的 mod 构建配置。
+//
+// 每个 mod 只是根目录下的一个子项目，它自己的 build.gradle 通常只需要几行甚至完全为空。
+// Loom、Minecraft/Fabric 依赖、Java 版本、打包、发布，全在这里配一次。
+// 版本号在根 gradle.properties，Loom 插件版本在 settings.gradle。
+
+plugins {
+	// 版本由 settings.gradle 的 pluginManagement 提供，这里只声明不在根项目应用
+	id 'net.fabricmc.fabric-loom-remap' apply false
+}
+
+subprojects {
+	apply plugin: 'net.fabricmc.fabric-loom-remap'
+	apply plugin: 'maven-publish'
+
+	// group 自动从目录名派生：spearmod -> com.example.spearmod
+	// 连字符在 Java 包名里非法，替换成下划线
+	group = "${mod_group_base}.${project.name.replace('-', '_')}"
+
+	repositories {
+		// 本地引导仓库：funmod 预取过一份 Fabric 构件放在自己的 .maven-local 里。
+		// 目录不存在时自动跳过，所以其他 mod 不受影响。
+		def bootstrap = file('.maven-local')
+		if (bootstrap.exists()) {
+			maven {
+				name = 'Bootstrap Local'
+				url = bootstrap.toURI()
+			}
+		}
+		maven {
+			name = 'Aliyun Public'
+			url = 'https://maven.aliyun.com/repository/public'
+		}
+		maven {
+			name = 'Fabric Mirror'
+			url = 'https://repository.hanbings.io/proxy'
+		}
+	}
+
+	// 下面两段仓库排序是整个构建不联网的关键，不要删。
+	//
+	// Loom 在 apply 时会自己注册官方 Fabric 源，而且排在最前。
+	// 本机访问 maven.fabricmc.net 极不稳定，几 KB 的 POM 都会卡死，
+	// 所以把它压到队尾，并且只允许它提供 Fabric 自己的构件。
+	def fabricRepo = repositories.findByName('Fabric')
+	if (fabricRepo != null) {
+		repositories.remove(fabricRepo)
+		repositories.add(fabricRepo)
+		fabricRepo.content {
+			includeGroupByRegex 'net\\.fabricmc.*'
+		}
+	}
+
+	// 引导仓库必须在最前，否则仍会先去联网拉那些本地已经有的构件
+	def bootstrapRepo = repositories.findByName('Bootstrap Local')
+	if (bootstrapRepo != null) {
+		repositories.remove(bootstrapRepo)
+		repositories.add(0, bootstrapRepo)
+	}
+
+	loom {
+		// 公共代码在 src/main/java，客户端专用代码在 src/client/java
+		splitEnvironmentSourceSets()
+
+		// Loom 1.19 默认不挂 Mixin 注解处理器，必须显式打开。
+		// 缺了它不会生成 refmap：开发环境一切正常，打包后 Mixin 在生产环境静默失效。
+		mixin {
+			useLegacyMixinAp = true
+		}
+
+		mods {
+			"${project.name}" {
+				sourceSet sourceSets.main
+				sourceSet sourceSets.client
+			}
+		}
+	}
+
+	dependencies {
+		minecraft "com.mojang:minecraft:${project.minecraft_version}"
+		mappings loom.officialMojangMappings()
+		modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+		modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.release = 21
+	}
+
+	java {
+		withSourcesJar()
+		sourceCompatibility = JavaVersion.VERSION_21
+		targetCompatibility = JavaVersion.VERSION_21
+	}
+
+	processResources {
+		// configuration cache 不允许在执行期闭包里引用 project，
+		// 所以先把值取到局部变量再让闭包捕获它
+		def modVersion = project.version.toString()
+		inputs.property "version", modVersion
+		filesMatching('fabric.mod.json') {
+			expand "version": modVersion
+		}
+	}
+
+	jar {
+		def projectName = project.name
+		def licenseFile = rootProject.file('LICENSE')
+		inputs.property "projectName", projectName
+		from(licenseFile) {
+			rename { "${it}_$projectName" }
+		}
+	}
+
+	publishing {
+		publications {
+			create('mavenJava', MavenPublication) {
+				from components.java
+			}
+		}
+	}
+}

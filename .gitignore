@@ -1,20 +1,44 @@
-# 各 mod 的构建产物由它自己的 .gitignore 管，这里只管仓库根
+# 整个仓库统一一份，各 mod 不再单独放 .gitignore
+# 这些规则默认递归匹配所有子目录
 
-# IDE
+# ---- Gradle / 构建产物 ----
+.gradle/
+build/
+out/
+classes/
+
+# funmod 的本地引导仓库，约 20MB，不入库
+.maven-local/
+
+# ---- Fabric 运行时 ----
+run/
+
+# ---- IDE ----
 .idea/
 .vscode/
+.settings/
 *.iml
 *.ipr
 *.iws
+*.launch
+bin/
+.classpath
+.project
 
-# 临时诊断输出：查 API、抓构建日志之类习惯性用点开头的文件，
-# 别不小心提交上去
+# ---- 临时诊断输出 ----
+# 查 API、抓构建日志之类习惯性用点开头的文件，别不小心提交上去
 .*.txt
 .*.log
 .*.json
 .gh*
 
-# 系统
+# ---- JVM 崩溃产物 ----
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr
+
+# ---- 系统 ----
 Thumbs.db
 Desktop.ini
 .DS_Store

@@ -15,20 +15,20 @@ Minecraft 1.21.1 + Fabric 的小玩法模组。
 
 ## 构建
 
-本机没有系统 Java，先指定已安装的 JDK 25：
+在**仓库根**执行（不是在 mod 目录里，本模块没有自己的 gradlew）：
 
-```bash
-export JAVA_HOME="C:/Users/zhang/.jdks/jdk-25.0.5+8"
-./gradlew build
+```powershell
+$env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
+./gradlew :funmod:build
 ```
 
-产物在 `build/libs/funmod-<version>.jar`。
+产物在 `funmod/build/libs/funmod-<version>.jar`，不要用带 `-sources` 的那个。
 
 ## 开发运行
 
-```bash
-export JAVA_HOME="C:/Users/zhang/.jdks/jdk-25.0.5+8"
-./gradlew runClient
+```powershell
+$env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
+./gradlew :funmod:runClient
 ```
 
 ## 联机

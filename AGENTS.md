@@ -1,118 +1,231 @@
 # MinecraftMods 仓库说明
 
-这是一个 **monorepo**：每个 mod 是一个**完全独立的 Gradle 项目**，占据一个一级子目录。
+**Gradle 多模块 monorepo**：仓库根是一个 Gradle 项目，每个 mod 是它的一个子模块。
+公共构建配置只有一份，在根 `build.gradle`；各 mod 目录里只有自己的代码。
 
 ```
 MinecraftMods/
-├── .github/workflows/build.yml   CI，自动发现所有 mod，新增 mod 不需要改
-├── tools/new-mod.ps1             一键生成新 mod 的脚手架
-├── funmod/                       独立项目：门扇挥扫等小玩法
-└── <其他 mod>/                    独立项目
+├── settings.gradle      自动发现子模块 + Loom 插件版本
+├── build.gradle         所有 mod 的公共配置（Loom、依赖、仓库源、打包、发布）
+├── gradle.properties    版本号、JDK 路径、group 前缀
+├── gradlew, gradle/     全仓库唯一一套 wrapper
+├── LICENSE              全仓库共享
+├── .github/workflows/build.yml   CI，一条命令构建所有 mod
+├── tools/new-mod.ps1    新建 mod 的脚手架
+├── funmod/              子模块：门扇挥扫冲击
+└── spearmod/            子模块：（待实现）
 ```
 
-## 新建一个 mod
+---
+
+## 新建一个 mod（最常见操作，看这里就够）
+
+在**仓库根**执行：
 
 ```powershell
-.\tools\new-mod.ps1 -ModId spearmod -Description "长枪武器与相关附魔"
+.\tools\new-mod.ps1 -ModId gunmod -ClassName GunMod -Description "某种枪"
 ```
 
-脚手架会从 `funmod` 继承版本号、JDK 路径和 Gradle wrapper，生成可直接 `./gradlew build` 的项目，
-并带上 `useLegacyMixinAp = true`（Loom 1.19 的坑，见下）。详见脚本头部的注释。
-
-主类名默认从 ModId 帕斯卡化推导，`spearmod` 会得到 `Spearmod`。想要 `SpearMod` 就显式传：
+然后立刻可以构建：
 
 ```powershell
-.\tools\new-mod.ps1 -ModId spearmod -ClassName SpearMod
+$env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
+./gradlew :gunmod:build
 ```
 
-**类名要在生成时就定好，不要事后再改大小写。** Windows 文件系统大小写不敏感，
-`Spearmod.java` → `SpearMod.java` 这种重命名会撞上一连串麻烦：编辑工具认为内容没变而拒绝写入，
-git 默认 `core.ignorecase=true` 看不见重命名，而 Java 要求 public 类名与文件名严格一致，
-对不上就直接编译失败。真要改，得先删文件再按新大小写重建。
+就这样。**不需要任何登记动作**：
 
-新 mod **不需要**任何登记动作：CI 靠"一级子目录里有没有 `settings.gradle`"来发现项目。
+- `settings.gradle` 自动发现带 `build.gradle` 的一级子目录
+- CI 一条 `./gradlew build` 构建全部，也不用改
+- 不需要 wrapper、`.gitignore`、`LICENSE`、`gradle.properties`，全是仓库级共享的
 
-## 全局共享的缓存（重要）
+脚手架只生成 8 个文件：
 
-新增 mod 的边际成本很低，因为重资产都在用户目录下全局共享：
+```
+gunmod/
+├── build.gradle                     空的（但必须存在，settings.gradle 靠它识别子模块）
+├── README.md
+├── AGENTS.md
+└── src/
+    ├── main/java/com/example/gunmod/GunMod.java
+    ├── main/resources/fabric.mod.json
+    ├── main/resources/gunmod.mixins.json
+    ├── main/resources/assets/gunmod/icon.png   占位图，记得换
+    └── client/java/com/example/gunmod/client/GunModClient.java
+```
+
+参数说明：
+
+| 参数 | 必需 | 说明 |
+|---|---|---|
+| `-ModId` | ✅ | 小写字母开头，只能含小写字母/数字/`_`/`-` |
+| `-ClassName` | | 主类名。**建议显式给**，见下面的坑 |
+| `-DisplayName` | | mod 显示名，默认 `<ClassName> Mod` |
+| `-Description` | | 一句话描述，不能含双引号或反斜杠 |
+
+`group` 自动派生成 `com.example.<modid>`（前缀取自根 `gradle.properties` 的 `mod_group_base`）。
+
+---
+
+## 构建命令
+
+一律在**仓库根**执行，各 mod 目录里没有 gradlew：
+
+```powershell
+$env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
+
+./gradlew build                    # 构建所有 mod
+./gradlew :funmod:build            # 只构建某一个
+./gradlew :funmod:runClient        # 跑某个 mod 的开发客户端
+./gradlew projects                 # 看当前发现了哪些子模块（3 秒）
+```
+
+产物在 `<mod>/build/libs/<mod>-0.1.0.jar`，不要用带 `-sources` 的那个。
+
+---
+
+## 已知的坑（都踩过，别再踩）
+
+### 1. `useLegacyMixinAp = true` 不能删
+
+在根 `build.gradle` 的 `subprojects { loom { mixin { ... } } }` 里。Loom 1.19 默认**不挂**
+Mixin 注解处理器，缺了它就不生成 refmap：开发环境跑得好好，打包后 Mixin 在生产环境
+（intermediary 映射）静默失效。
+
+验证方式：`jar tf <mod>/build/libs/<mod>-0.1.0.jar` 里应该有 `<mod>-refmap.json`。
+
+### 2. 仓库源的排序逻辑不能删
+
+根 `build.gradle` 里有两段看似多余的 `repositories.remove/add`：
+
+- 把 Loom 自动注册的官方 `Fabric` 源压到**队尾**，并限制它只提供 `net.fabricmc*`
+- 把 `.maven-local` 引导仓库提到**最前**
+
+原因是本机访问 `maven.fabricmc.net` 极不稳定，几 KB 的 POM 都会 Read timed out。
+删掉这两段，构建就会去联网拉本地已有的构件，然后卡十几分钟失败。
+
+### 3. configuration cache 下不能在闭包里引用 `project`
+
+`processResources` 和 `jar` 里必须先把值取到局部变量：
+
+```gradle
+processResources {
+    def modVersion = project.version.toString()   // 先取出来
+    filesMatching('fabric.mod.json') {
+        expand "version": modVersion              // 闭包只捕获局部变量
+    }
+}
+```
+
+直接在 `filesMatching { }` 里写 `project.version` 会报
+`Invocation of 'project' references a Gradle script object from a Groovy closure at execution time`。
+
+### 4. Windows 上改 Java 类名的大小写很麻烦
+
+`Spearmod.java` → `SpearMod.java` 这种重命名：文件系统大小写不敏感，编辑工具会认为
+内容没变而拒绝写入；git 默认 `core.ignorecase=true` 看不见重命名；而 Java 要求 public
+类名与文件名严格一致，对不上直接编译失败。**类名在跑脚手架时就用 `-ClassName` 定好。**
+
+### 5. `.ps1` 必须存成 UTF-8 with BOM
+
+PowerShell 5.1 读无 BOM 的 UTF-8 脚本时按 GBK 解析，中文全变乱码，语法检查直接炸。
+但脚本**生成**的文件反过来要无 BOM（Gradle/Java 期望），所以脚本内部用
+`New-Object System.Text.UTF8Encoding($false)`。
+
+### 6. CI 上要覆盖 `org.gradle.java.home`
+
+根 `gradle.properties` 里写的是本机 JDK 路径，runner 上不存在。
+workflow 已经统一加了 `-Dorg.gradle.java.home="$JAVA_HOME"`。
+
+### 7. 本机 git 访问 github.com 需要走代理
+
+已配全局：`http.https://github.com.proxy = http://127.0.0.1:7900`。
+代理软件关掉后 push 会失败，届时 `git config --global --unset http.https://github.com.proxy`。
+
+---
+
+## 环境事实
+
+- Minecraft **1.21.1**，Fabric，Mojang 官方映射（不是 Yarn）
+- Fabric Loader 0.20.1，Fabric API 0.116.17+1.21.1，Loom 1.19.3，Gradle 9.8.2
+- 游戏代码编译目标 **Java 21**；Gradle 本身跑在 **JDK 25**（Loom 1.19 的硬性要求）
+- 本机没有系统 JDK，也没配 `JAVA_HOME`，JDK 在 `C:/Users/zhang/.jdks/jdk-25.0.5+8`
+- shell 是 PowerShell 5.1，**不支持 `&&`**，用 `;`
+- 拆分源集：公共代码在 `src/main/java`，客户端专用代码在 `src/client/java`
+
+### 升级版本改哪里
+
+| 要改什么 | 改哪个文件 |
+|---|---|
+| Minecraft / Loader / Fabric API 版本 | `gradle.properties` |
+| Loom 插件版本 | `settings.gradle` 的 `pluginManagement.plugins` |
+| 所有 mod 的默认版本号 | `gradle.properties` 的 `version` |
+| group 前缀 | `gradle.properties` 的 `mod_group_base` |
+| JDK 路径 | `gradle.properties` 的 `org.gradle.java.home` |
+
+都是一处改、全仓库生效。`plugins {}` 块不允许变量插值，所以 Loom 版本只能硬编码在
+`settings.gradle`，这是 Gradle 的限制，不是遗漏。
+
+### 全局共享的缓存
+
+新 mod 的边际成本很低，重资产都在用户目录下全局共享：
 
 | 位置 | 内容 | 大小 |
 |---|---|---|
 | `~/.gradle/caches/fabric-loom` | Minecraft 本体 + Mojang 映射 | ~234 MB |
 | `~/.gradle/caches/modules-2` | 依赖构件，**已含 fabric-api** | ~77 MB |
-| `<mod>/.gradle` | 项目级配置缓存 | ~64 MB，各自独立 |
+| `./.gradle` | 本仓库的配置缓存 | 仓库级共享一份 |
 
-所以：
+所以同版本的新 mod **不用重新下载 Minecraft**，也不用重新映射。
+`funmod/.maven-local`（约 20MB）是当初绕开网络问题时预取的引导仓库，
+现在只是兜底，**不要删**，但新 mod 不需要它。
 
-- 同版本（1.21.1 + Mojang 映射）的新 mod **不用重新下载 Minecraft**，也不用重新映射
-- 新 mod **不需要** `.maven-local`。`funmod/.maven-local` 是当初绕开 `maven.fabricmc.net`
-  不稳定时做的引导仓库，它的构件现在已经进了全局 `modules-2`
-- 真要离线引导，脚手架加 `-WithBootstrap` 会复制一份（约 20MB）
-- 多个 mod 同时编译时，Gradle 会用文件锁保护全局缓存，**会互相等待但不会损坏**
+### 核实 Minecraft API
 
-## 多 agent 并行开发
-
-### 用 worktree，不要多个 agent 挤同一个目录
-
-`.git/index.lock` 是仓库级独占的，两个 agent 同时 `git add`/`commit` 必然有一个失败，
-跟改的是不是同一个文件无关。正确做法是每个 agent 一个 worktree + 一个分支：
+本机没有源码 jar，用 javap 查 Loom 的 mapped jar：
 
 ```powershell
-# 在主仓库里为某个 mod 开一个工作区
-git worktree add ..\wt-spear -b feat/spear
-cd ..\wt-spear
+& "C:/Users/zhang/.jdks/jdk-25.0.5+8/bin/javap.exe" -cp <jar> <类全名>
 ```
 
-各 worktree 有独立的 index 和物理目录，互不干扰，最后合回 `main`。
+jar 在 `~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/` 下的
+`minecraft-common-*`（客户端类在 `minecraft-clientonly-*`）。
 
-管理：
+**不确定 API 时先查，不要凭记忆猜类名或方法名。** 加 `-c -p` 能看字节码，
+用来确认方法之间的调用关系（比如某个方法到底会不会被另一条路径调用）。
 
-```powershell
-git worktree list          # 看当前有哪些
-git worktree remove ..\wt-spear
-```
+---
 
-### 硬性规则
+## 编码约定（所有 mod 通用）
 
-- **只改自己 mod 的目录**。跨 mod 的公共改动要单独开分支，不要混在功能分支里
-- **不要改 `.github/workflows/build.yml`**。它是自动发现的，改了就是给所有分支制造冲突
-- **不要改 `tools/new-mod.ps1`**，除非这次任务就是改脚手架
-- 提交前先 `git pull --rebase origin main`
-- 各 mod 的 `AGENTS.md` 是该 mod 自己的约定，进某个 mod 目录前先读它
+- 只用 Fabric API 和 Mojang 映射下的官方类；禁止 Forge / NeoForge API
+- 伤害、击退、附魔触发等玩法逻辑必须在**服务端**执行；客户端只负责渲染、粒子、音效
+- 客户端专用类放 `src/client/java`，不要被服务端代码引用
+- 注册在各 mod 的 `<MainClass>.onInitialize` 中完成
+- 资源路径必须与注册 ID 对齐：`assets/<modid>/...`、`data/<modid>/...`
+- 不要修改 `build/`、`.gradle/`、`run/` 下的内容
+- 优先使用 Fabric API 事件；没有对应事件时才用 Mixin
+- Mixin 类放 `<rootpackage>.mixin`，清单在 `src/main/resources/<modid>.mixins.json`
+- 需要某个 mod 独有的依赖或仓库源，写进**该 mod 自己的** `build.gradle`，不要改根配置
+- `./gradlew build` 通过只代表编译打包成功，游戏内行为仍需 `runClient` / `runServer` 验证
 
-### 并行的真实成本
+---
 
-- 每个 Gradle daemon 吃 `-Xmx2G`，三个 mod 同时编译就是 6GB+，还没算 Loom 的映射开销
-- 多个 agent 共享同一个终端会话时，PowerShell 的输出会滞后、串台。
-  需要看命令结果时，**重定向到文件再读**比直接看 stdout 可靠得多
-- 首次为新 mod 跑 Loom 时如果多个 agent 同时触发，会争用 `fabric-loom` 缓存锁，很慢。
-  错开第一次构建，之后的增量构建就不冲突了
+## 工作方式
 
-## 各 mod 通用的坑
+- 一次只实现一个功能，改完立即 `./gradlew :<modid>:build`，编译通过再继续
+- 做完一个功能就提交，commit message 说清"为什么这么做"，不只是"改了什么"
+- 临时诊断文件（查 API 的输出、构建日志）用 `.` 开头命名，根 `.gitignore` 已经忽略它们
 
-- **`useLegacyMixinAp = true` 不能删**。Loom 1.19 默认不挂 Mixin 注解处理器，
-  缺了它不生成 refmap：开发环境跑得好好，打包后 Mixin 在生产环境（intermediary）静默失效。
-  验证方式：`jar tf build/libs/<mod>-0.1.0.jar` 里应该有 `<mod>-refmap.json`
-- **CI 上要覆盖 `org.gradle.java.home`**。各 mod 的 `gradle.properties` 里写的是本机 JDK 路径，
-  runner 上不存在。workflow 已经统一加了 `-Dorg.gradle.java.home="$JAVA_HOME"`
-- **本机 git 访问 github.com 需要走代理**，已配全局：
-  `http.https://github.com.proxy = http://127.0.0.1:7900`。
-  代理软件关掉后 push 会失败，届时 `git config --global --unset http.https://github.com.proxy`
+---
 
-## 环境与命令
+## 附：如果以后要多个 agent 并行
 
-- Windows，shell 是 PowerShell 5.1（不支持 `&&`，用 `;`）
-- 本机没有系统 JDK，也没配 `JAVA_HOME`，JDK 25 在 `C:/Users/zhang/.jdks/jdk-25.0.5+8`
-- 构建某个 mod：
-  ```powershell
-  cd <mod>
-  $env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"; ./gradlew build
-  ```
-- PowerShell 5.1 读 `.ps1` 时，**UTF-8 无 BOM 的中文会按 GBK 解析成乱码**。
-  仓库里的 `.ps1` 一律存成 UTF-8 with BOM
-- 核实 Minecraft API 用 javap 查 Loom 的 mapped jar（本机没有源码 jar）：
-  ```powershell
-  & "C:/Users/zhang/.jdks/jdk-25.0.5+8/bin/javap.exe" -cp <jar> <类全名>
-  ```
-  jar 在 `~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/` 下的
-  `minecraft-common-*`，客户端类在 `minecraft-clientonly-*`
+现在是一个人顺序做，不需要下面这些。真要并行时再看：
+
+- `.git/index.lock` 是仓库级独占的，两个 agent 同时 `commit` 必有一个失败，
+  跟改的是不是同一个文件无关。要用 `git worktree add ..\wt-xxx -b feat/xxx` 各开一个工作区
+- 各 mod 只改自己的目录；**不要改根 `build.gradle` / `settings.gradle` / CI**，
+  那是所有分支的公共冲突点
+- 多模块共享一个 Gradle daemon（`-Xmx3G`），多个 worktree 同时构建会各自起 daemon，注意内存
+- 多 agent 共用一个终端会话时 PowerShell 输出会滞后串台，结果重定向到文件再读更可靠
