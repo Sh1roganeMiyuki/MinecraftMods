@@ -1,0 +1,27 @@
+pluginManagement {
+	def bootstrapRepo = new File(rootDir, '.maven-local')
+	repositories {
+		if (bootstrapRepo.exists()) {
+			maven {
+				name = 'Bootstrap Local'
+				url = bootstrapRepo.toURI()
+			}
+		}
+		maven {
+			name = 'Aliyun Public'
+			url = 'https://maven.aliyun.com/repository/public'
+		}
+		maven {
+			name = 'Fabric Mirror'
+			url = 'https://repository.hanbings.io/proxy'
+		}
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'funmod'
