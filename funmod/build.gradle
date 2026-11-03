@@ -40,6 +40,13 @@ if (fabricRepo != null) {
 loom {
 	splitEnvironmentSourceSets()
 
+	// Loom 1.19 默认不再挂载 Mixin 注解处理器，必须显式打开。
+	// 否则不会生成 refmap，打包后在生产环境（intermediary 映射）里
+	// Mixin 找不到目标方法，开发环境却一切正常，属于很容易踩的坑。
+	mixin {
+		useLegacyMixinAp = true
+	}
+
 	mods {
 		"funmod" {
 			sourceSet sourceSets.main

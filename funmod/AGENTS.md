@@ -49,11 +49,32 @@
 - 物品、方块、附魔等注册在 `FunMod.onInitialize` 中完成
 - 资源路径必须与注册 ID 对齐：`assets/funmod/...`、`data/funmod/...`
 - 不要修改 `build/`、`.gradle/`、`run/` 下的内容
+- Mixin 已启用：清单在 `src/main/resources/funmod.mixins.json`，类放 `com.example.funmod.mixin`
+- `build.gradle` 里的 `loom { mixin { useLegacyMixinAp = true } }` **不能删**。Loom 1.19 默认不挂 Mixin 注解处理器，缺了它就不生成 refmap，开发环境跑得好好、打包后 Mixin 全部失效
+
+## 已实现功能
+
+### 门扇挥扫冲击（`doorslam`）
+
+门开/关时，把门当成绕门轴转 90° 的刚体，对扫过象限内的实体施加切线冲力 + 固定上抛。
+
+- **注入点是 `DoorBlock.playSound`（private），不是 `setOpen`**
+  - 1.21.1 里 `setOpen` 只被生物开门（村民、铁傀儡）调用
+  - 玩家右键走 `useWithoutItem`、红石走 `neighborChanged`，两者都直接 `setBlock`，压根不经过 `setOpen`
+  - `playSound(Entity, Level, BlockPos, boolean)` 是三条路径唯一的汇聚点，第 4 个参数就是变更后的开关状态
+- 红石会让门上下两半各触发一次 `playSound`，`DoorSlam.claimOnce` 按 `(维度, 下半坐标, gameTime)` 去重，避免冲力翻倍
+- 客户端为了交互预测也会跑 `useWithoutItem`，所以入口第一件事是 `level.isClientSide` 直接返回
+- 参数在 `config/funmod/door-slam.json`，缺文件会自动写一份完整模板
 
 ## 工作方式
 
 - 一次只实现一个功能，改完立即执行 `./gradlew build`，编译通过再继续
 - 不确定 API 时先查项目依赖中的 Minecraft 源码，不要凭记忆猜类名或方法名
-- 优先使用 Fabric API 事件；只有没有对应事件时才考虑 Mixin（当前未启用 Mixin 配置）
+- 本机没有 Minecraft 源码 jar，核实签名用 `javap` 查 Loom 的 mapped jar：
+  `C:/Users/zhang/.jdks/jdk-25.0.5+8/bin/javap.exe -cp <jar> <类全名>`，
+  jar 在 `C:/Users/zhang/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/` 下的
+  `minecraft-common-*` 和 `minecraft-clientonly-*`（客户端类在后者）
+- 优先使用 Fabric API 事件；没有对应事件时才用 Mixin
 - `./gradlew build` 通过只代表编译和打包成功，游戏内行为仍需 `runClient` 或 `runServer` 验证
 - 游戏客户端尚未启动验证过；首次 `runClient` 会下载资源，耗时较长
+- 打包后可用 `jar tf build/libs/funmod-0.1.0.jar` 确认 `funmod-refmap.json` 在包里

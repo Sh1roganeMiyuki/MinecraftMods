@@ -1,0 +1,210 @@
+package com.example.funmod.doorslam;
+
+import com.example.funmod.FunMod;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.DoorHingeSide;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * 门扇挥扫冲击。把开关门抽象成一块绕门轴旋转 90° 的刚体，
+ * 对它扫过的那四分之一圆内的实体施加切线方向的瞬时冲力。
+ *
+ * <h2>门轴（铰链）在哪</h2>
+ * 原版 {@code DoorBlock} 关闭时门板厚 3/16，贴在方块的 FACING 那一侧边缘，
+ * 铰链是门板的一条垂直棱，位于方块的左棱或右棱上：
+ * <pre>
+ *   俯视，FACING=NORTH（-Z，图中向上），HINGE=LEFT
+ *
+ *              北
+ *          ┌──●━━━━┓        ● = 门轴，在方块西棱 ∩ 门板平面
+ *          │  ┃    │        ┃ = 关闭时的门板（贴在北缘）
+ *          └──┸━━━━┛
+ *              ↓
+ *      开门后门扇绕 ● 向南展开
+ * </pre>
+ * {@code HINGE=LEFT} 对应 {@code FACING.getCounterClockWise()}，
+ * {@code HINGE=RIGHT} 对应 {@code FACING.getClockWise()}。
+ * 这是从原版 {@code getStateForPlacement} 的铰链判定反推的：FACING=NORTH 时
+ * 点击方块西半（x&lt;0.5）会得到 LEFT，而面朝北时的左手边正是西。
+ *
+ * <h2>旋转方向</h2>
+ * 关门时门扇自由端指向 {@code -side}，开门后指向 {@code -FACING}（门朝背离
+ * FACING 的方向展开）。两者的叉积 y 分量给出俯视旋转方向，关→开与开→关取反。
+ */
+public final class DoorSlam {
+	/** 门板平面中心相对方块中心的内缩量：0.5 - (3/16)/2 */
+	private static final double PANEL_INSET = 0.5D - 3.0D / 32.0D;
+
+	/** 刚体旋转时线速度正比于半径，这里给出杠杆系数的上下限 */
+	private static final double LEVERAGE_MIN = 0.8D;
+	private static final double LEVERAGE_MAX = 1.2D;
+
+	/** 门上下两半合计高度 */
+	private static final double DOOR_HEIGHT = 2.0D;
+
+	/** 去重表膨胀到该规模时清理陈旧条目 */
+	private static final int MAX_TRACKED_DOORS = 256;
+
+	/** 门轴 → 上次处理的 gameTime，用于压掉上下两半的重复触发 */
+	private static final Map<GlobalPos, Long> RECENT = new ConcurrentHashMap<>();
+
+	private DoorSlam() {
+	}
+
+	/**
+	 * 门开关的唯一入口，由 {@code DoorBlockMixin} 在 {@code DoorBlock#playSound} 头部调用。
+	 *
+	 * @param source 触发者，红石触发时为 null
+	 * @param open   变更<b>之后</b>的开关状态
+	 */
+	public static void onDoorToggled(@Nullable Entity source, Level level, BlockPos pos, boolean open) {
+		// 客户端会为了交互预测同样跑一遍 useWithoutItem，物理判定必须只在服务端做
+		if (level.isClientSide) {
+			return;
+		}
+		DoorSlamConfig config = FunMod.DOOR_SLAM;
+		if (!config.enabled) {
+			return;
+		}
+		BlockState state = level.getBlockState(pos);
+		if (!(state.getBlock() instanceof DoorBlock)) {
+			return;
+		}
+
+		// 红石会让上下两半各触发一次，先归一化到下半再去重，否则冲力会翻倍
+		DoubleBlockHalf half = state.getValue(DoorBlock.HALF);
+		BlockPos anchor = half == DoubleBlockHalf.LOWER ? pos : pos.relative(half.getDirectionToOther());
+		if (!claimOnce(level, anchor)) {
+			return;
+		}
+
+		Direction facing = state.getValue(DoorBlock.FACING);
+		Direction side = state.getValue(DoorBlock.HINGE) == DoorHingeSide.LEFT
+				? facing.getCounterClockWise()
+				: facing.getClockWise();
+		Vec3 hinge = Vec3.atBottomCenterOf(anchor)
+				.add(vector(facing).scale(PANEL_INSET))
+				.add(vector(side).scale(0.5D));
+
+		// 门扇自由端的两个极限朝向，二者天然正交
+		Vec3 closedDir = vector(side).scale(-1.0D);
+		Vec3 openDir = vector(facing).scale(-1.0D);
+		double spin = Math.signum(closedDir.cross(openDir).y);
+		if (!open) {
+			spin = -spin;
+		}
+
+		AABB area = new AABB(
+				hinge.x - config.reach, anchor.getY(), hinge.z - config.reach,
+				hinge.x + config.reach, anchor.getY() + DOOR_HEIGHT, hinge.z + config.reach);
+		List<Entity> candidates = level.getEntities((Entity) null, area, DoorSlam::canBeSlammed);
+
+		int hits = 0;
+		for (Entity target : candidates) {
+			if (slam(target, hinge, closedDir, openDir, spin, config)) {
+				hits++;
+			}
+		}
+		if (hits > 0) {
+			feedback(level, anchor, hinge, closedDir, openDir, config);
+			FunMod.LOGGER.debug("[door-slam] {} 在 {} 扫中 {} 个实体", open ? "开门" : "关门", anchor.toShortString(), hits);
+		}
+	}
+
+	/**
+	 * 对单个实体施加冲力。
+	 *
+	 * @return 是否真的命中（落在门扇扫过的扇形内）
+	 */
+	private static boolean slam(Entity target, Vec3 hinge, Vec3 closedDir, Vec3 openDir,
+			double spin, DoorSlamConfig config) {
+		Vec3 offset = target.position().subtract(hinge);
+		double radius = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
+		if (radius > config.reach || radius < 1.0E-4D) {
+			return false;
+		}
+
+		Vec3 radial = new Vec3(offset.x / radius, 0.0D, offset.z / radius);
+		// 门扇只扫过 closedDir 与 openDir 夹出的那 90°，扇形外的实体（多半在墙里）不该挨打
+		if (radial.dot(closedDir) < -config.angleTolerance || radial.dot(openDir) < -config.angleTolerance) {
+			return false;
+		}
+
+		// v = ω × r，ω 沿 Y 轴，因此切线方向是 (spin·z, 0, -spin·x)
+		Vec3 tangent = new Vec3(spin * radial.z, 0.0D, -spin * radial.x);
+		double horizontal = config.horizontalStrength * Mth.clamp(radius, LEVERAGE_MIN, LEVERAGE_MAX);
+		Vec3 motion = target.getDeltaMovement();
+		target.setDeltaMovement(
+				tangent.x * horizontal,
+				Math.max(motion.y, 0.0D) + config.verticalStrength,
+				tangent.z * horizontal);
+
+		// 只改速度不同步的话，客户端会按自己预测的位置把玩家拽回去
+		target.hurtMarked = true;
+		if (target instanceof ServerPlayer player) {
+			player.connection.send(new ClientboundSetEntityMotionPacket(player));
+		}
+		return true;
+	}
+
+	/** 观察者模式不参与，乘客的位置由载具接管，单独打飞会把两者撕裂。 */
+	private static boolean canBeSlammed(Entity entity) {
+		return entity.isAlive() && !entity.isSpectator() && !entity.isPassenger();
+	}
+
+	private static void feedback(Level level, BlockPos anchor, Vec3 hinge,
+			Vec3 closedDir, Vec3 openDir, DoorSlamConfig config) {
+		level.playSound(null, anchor, SoundEvents.SHIELD_BLOCK, SoundSource.BLOCKS,
+				config.soundVolume, 0.85F + level.getRandom().nextFloat() * 0.3F);
+
+		if (config.particles && level instanceof ServerLevel server) {
+			// 扇形的角平分线中点，大致就是门扇拍中东西的位置
+			Vec3 mid = hinge
+					.add(closedDir.add(openDir).normalize().scale(config.reach * 0.5D))
+					.add(0.0D, 1.0D, 0.0D);
+			server.sendParticles(ParticleTypes.CRIT, mid.x, mid.y, mid.z, 14, 0.35D, 0.9D, 0.35D, 0.05D);
+			server.sendParticles(ParticleTypes.SMOKE, mid.x, mid.y, mid.z, 8, 0.3D, 0.8D, 0.3D, 0.01D);
+		}
+	}
+
+	/**
+	 * 同一游戏刻内同一扇门只放行一次。
+	 * {@code neighborChanged} 综合了上下两半的红石信号，两半都会各调一次 playSound。
+	 */
+	private static boolean claimOnce(Level level, BlockPos anchor) {
+		GlobalPos key = GlobalPos.of(level.dimension(), anchor);
+		long gameTime = level.getGameTime();
+		Long previous = RECENT.put(key, gameTime);
+		if (previous != null && previous == gameTime) {
+			return false;
+		}
+		if (RECENT.size() > MAX_TRACKED_DOORS) {
+			RECENT.values().removeIf(seen -> seen < gameTime - 2L);
+		}
+		return true;
+	}
+
+	private static Vec3 vector(Direction direction) {
+		return new Vec3(direction.getStepX(), direction.getStepY(), direction.getStepZ());
+	}
+}
