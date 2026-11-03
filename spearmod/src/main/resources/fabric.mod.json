@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "spearmod",
+	"version": "${version}",
+	"name": "Spear Mod",
+	"description": "Spear Mod —— Minecraft Fabric 小玩法模组。",
+	"license": "CC0-1.0",
+	"icon": "assets/spearmod/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.example.spearmod.SpearMod"
+		],
+		"client": [
+			"com.example.spearmod.client.SpearModClient"
+		]
+	},
+	"mixins": [
+		"spearmod.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,20 @@
+# 各 mod 的构建产物由它自己的 .gitignore 管，这里只管仓库根
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# 临时诊断输出：查 API、抓构建日志之类习惯性用点开头的文件，
+# 别不小心提交上去
+.*.txt
+.*.log
+.*.json
+.gh*
+
+# 系统
+Thumbs.db
+Desktop.ini
+.DS_Store

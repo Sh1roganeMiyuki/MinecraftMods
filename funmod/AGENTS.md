@@ -8,7 +8,8 @@
 
 ## 环境事实
 
-- 工程位置：`D:/MinecraftMods/funmod`（2026-11-03 从 Qoder 工作区迁出）
+- 工程位置：`D:/MinecraftMods/funmod`，是 MinecraftMods monorepo 里的一个独立 Gradle 项目
+- 仓库级约定（多 agent worktree 并行、全局缓存、新建 mod 的脚手架）在 `../AGENTS.md`
 
 - Minecraft 1.21.1，Fabric
 - Fabric Loader 0.20.1，Fabric API 0.116.17+1.21.1

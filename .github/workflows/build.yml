@@ -1,17 +1,33 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
-# certain platforms or Java versions, and provides a first line of defence
-# against bad commits.
-
 name: build
 on: [pull_request, push]
 
 jobs:
-  build:
+  # 自动发现所有 mod：凡是含 settings.gradle 的一级子目录都算一个独立 Gradle 项目。
+  # 刻意做成动态发现，这样新增 mod 不需要改本文件——多个分支并行开发时，
+  # 这个文件是最容易撞车的地方。
+  discover:
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: funmod
+    outputs:
+      mods: ${{ steps.find.outputs.mods }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: list mod projects
+        id: find
+        run: |
+          mods=$(find . -mindepth 2 -maxdepth 2 -name settings.gradle -printf '%h\n' \
+                 | sed 's|^\./||' | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "mods=$mods" >> "$GITHUB_OUTPUT"
+          echo "discovered: $mods"
+
+  build:
+    needs: discover
+    runs-on: ubuntu-24.04
+    strategy:
+      # 一个 mod 挂了不要牵连其他 mod 的构建结果
+      fail-fast: false
+      matrix:
+        mod: ${{ fromJson(needs.discover.outputs.mods) }}
     steps:
       - name: checkout repository
         uses: actions/checkout@v6
@@ -24,10 +40,13 @@ jobs:
           distribution: 'microsoft'
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
+        working-directory: ${{ matrix.mod }}
       - name: build
+        # runner 上没有本机那条 org.gradle.java.home，用 setup-java 给的 JAVA_HOME 覆盖
         run: ./gradlew build -Dorg.gradle.java.home="$JAVA_HOME"
+        working-directory: ${{ matrix.mod }}
       - name: capture build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: Artifacts
-          path: funmod/build/libs/
+          name: ${{ matrix.mod }}
+          path: ${{ matrix.mod }}/build/libs/
