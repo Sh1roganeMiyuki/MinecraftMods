@@ -128,9 +128,9 @@ public final class ImpactEngine {
 
 		BlockPos origin = BlockPos.containing(center);
 		int r = Mth.ceil(scanRadius);
-		@Nullable TagKey<net.minecraft.world.level.block.Block> immuneTag = config.immuneTag() != null
-				? TagKey.create(Registries.BLOCK, config.immuneTag())
-				: null;
+		@Nullable TagKey<net.minecraft.world.level.block.Block> immuneTag = config.immuneTag()
+				.map(location -> TagKey.create(Registries.BLOCK, location))
+				.orElse(null);
 		RandomSource random = level.getRandom();
 		ImpactEffect.Area area = effect.area();
 

@@ -1,6 +1,5 @@
 package com.example.impactengine;
 
-import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.mojang.serialization.DataResult;
@@ -37,15 +36,20 @@ public final class ImpactEffects extends SimpleJsonResourceReloadListener
 		implements IdentifiableResourceReloadListener {
 
 	public static final String DIRECTORY = "impact_effects";
-	public static final ImpactEffects INSTANCE = new ImpactEffects();
 
-	private static final Gson GSON = new GsonBuilder().create();
+	/**
+	 * 单例。注意 Gson 必须在 {@code super()} 里直接构造，**不能**用静态字段：
+	 * Java 静态字段按声明顺序初始化，如果 INSTANCE 排在 GSON 前面，
+	 * 构造时 GSON 还是 null，super 就拿到一个 null 的 Gson。
+	 * 这个错编译期、CI 全都报不出来，只会在进世界触发资源加载时炸 NPE。
+	 */
+	public static final ImpactEffects INSTANCE = new ImpactEffects();
 
 	/** reload 期间用 volatile 整体替换，读取方永远看到一致的快照 */
 	private volatile Map<ResourceLocation, ImpactEffect> effects = Map.of();
 
 	private ImpactEffects() {
-		super(GSON, DIRECTORY);
+		super(new GsonBuilder().create(), DIRECTORY);
 	}
 
 	/** 已由 {@code ImpactEngineMod.onInitialize} 调用，依赖本模块的 mod 不需要再管 */

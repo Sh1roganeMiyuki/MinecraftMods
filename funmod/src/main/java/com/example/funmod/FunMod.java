@@ -19,6 +19,7 @@ public class FunMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		DOOR_SLAM = DoorSlamConfig.load();
+		FunModCommands.register();
 		LOGGER.info("Fun Mod loaded");
 	}
 

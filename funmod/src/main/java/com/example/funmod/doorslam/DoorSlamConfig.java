@@ -38,6 +38,19 @@ public final class DoorSlamConfig {
 	/** 扇形边界容差。越大越容易把门框两侧的实体也一起扫进去。 */
 	public double angleTolerance = 0.15D;
 
+	/**
+	 * 击飞方向的算法，三个值大小写不敏感，写错会退回 TANGENTIAL：
+	 *
+	 * <ul>
+	 *   <li>{@code TANGENTIAL} —— 切线，v = ω × r。物理最准，但扇形边缘的实体
+	 *       会被推向门轴一侧（站在正南的人可能往正西飞），玩起来可能别扭</li>
+	 *   <li>{@code SWEEP} —— 门扇自由端的位移方向，整个判定区**统一一个方向**。
+	 *       可预测，不会把人拍向墙，也不会随站位变来变去</li>
+	 *   <li>{@code RADIAL} —— 从门轴往外推，永远远离门轴</li>
+	 * </ul>
+	 */
+	public String knockbackMode = "TANGENTIAL";
+
 	/** 命中音效音量。 */
 	public float soundVolume = 1.0F;
 
@@ -84,6 +97,11 @@ public final class DoorSlamConfig {
 		reach = clampOr(reach, 0.5D, 8.0D, DEFAULTS.reach);
 		angleTolerance = clampOr(angleTolerance, 0.0D, 1.0D, DEFAULTS.angleTolerance);
 		soundVolume = clampOr(soundVolume, 0.0F, 16.0F, DEFAULTS.soundVolume);
+		if (DoorSlam.parseMode(knockbackMode) == null) {
+			FunMod.LOGGER.warn("[door-slam] knockbackMode '{}' 不认识，改用 {}",
+					knockbackMode, DEFAULTS.knockbackMode);
+			knockbackMode = DEFAULTS.knockbackMode;
+		}
 	}
 
 	private static double clampOr(double value, double min, double max, double fallback) {

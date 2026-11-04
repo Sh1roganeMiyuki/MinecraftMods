@@ -4,6 +4,7 @@
 // 跨项目访问 sourceSets 必须在 dependencies 块外先拿到 Project 对象：
 // 块内的 project(...) 返回的是 ProjectDependency，上面根本没有 sourceSets 属性
 def impactEngine = project(':impactengine')
+def funmodProject = project(':funmod')
 
 dependencies {
 	// 跨子模块依赖另一个 Loom 项目，必须走 namedElements。
@@ -20,4 +21,14 @@ dependencies {
 	// 用了 splitEnvironmentSourceSets() 的多项目，还要单独接对方的 client 源集，
 	// 否则 dev 环境里引用不到对方的客户端类
 	clientImplementation impactEngine.sourceSets.client.output
+
+	// ---- 以下仅开发环境，用来把门挥扫也拉进同一个测试客户端 ----
+	//
+	// 不然 :spearmod:runClient 只能测引擎、:funmod:runClient 只能测门，
+	// 两边共用 run/ 目录还不能同时开，来回切很烦。
+	//
+	// 用 runtimeOnly 而不是 modRuntimeOnly：后者同样会让 Loom 在配置阶段读 jar 而死锁。
+	// 它不进 spearmod 的 jar，也不该写进 fabric.mod.json 的 depends（两者实际互不依赖）。
+	runtimeOnly project(path: ':funmod', configuration: 'namedElements')
+	runtimeOnly funmodProject.sourceSets.client.output
 }

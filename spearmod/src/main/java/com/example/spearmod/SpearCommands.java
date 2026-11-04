@@ -76,7 +76,7 @@ public final class SpearCommands {
 			return 0;
 		}
 
-		Vec3 center = resolveCenter(player, distance);
+		Vec3 center = resolveCenter(player, distance, effect);
 		ImpactEngine.Result result = ImpactEngine.execute(
 				serverLevel, effect, center, player.getLookAngle(), player, level);
 
@@ -86,10 +86,20 @@ public final class SpearCommands {
 	}
 
 	/**
-	 * 优先取视线真正命中的方块或实体，这样"看着哪炸哪"。
-	 * 对着天空之类打空了就退回到眼前 distance 格，否则什么都测不了。
+	 * 中心点怎么取，得看形状：
+	 *
+	 * <ul>
+	 *   <li>锥形：顶点必须在**玩家自己**。锥是从你这里往前扫的，
+	 *       要是把顶点放到视线命中点上，整个判定区就跑到你前方远处去了，
+	 *       你和身边的怪一个也打不到——只剩粒子和音效，看着像"没作用"</li>
+	 *   <li>球形/圆柱：取视线真正命中的方块或实体，"看着哪炸哪"。
+	 *       对着天空打空了就退回到眼前 distance 格</li>
+	 * </ul>
 	 */
-	private static Vec3 resolveCenter(ServerPlayer player, double distance) {
+	private static Vec3 resolveCenter(ServerPlayer player, double distance, ImpactEffect effect) {
+		if (effect.area().shape() == ImpactEffect.Shape.CONE) {
+			return player.getEyePosition();
+		}
 		HitResult hit = player.pick(distance, 0.0F, false);
 		if (hit.getType() != HitResult.Type.MISS) {
 			return hit.getLocation();

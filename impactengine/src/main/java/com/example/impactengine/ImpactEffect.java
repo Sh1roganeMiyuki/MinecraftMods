@@ -4,7 +4,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
@@ -41,6 +43,49 @@ public record ImpactEffect(
 		List<StatusEffect> statusEffects,
 		Visuals visuals
 ) {
+
+	/**
+	 * 粒子 codec：裸 id 字符串和原版的对象形式都收。
+	 *
+	 * <p>{@code ParticleTypes.CODEC} 只认 {@code {"type":"minecraft:xxx", ...}} 这种对象，
+	 * 直接写 {@code "minecraft:explosion_emitter"} 会报 "Not a JSON object"。
+	 * 但绝大多数情况只是想指定一个无参粒子，写字符串更顺手，所以先按对象试，
+	 * 失败再按字符串去注册表里查。带参数的粒子（如 dust）仍用对象形式。
+	 *
+	 * <p><b>声明顺序有硬要求：这两个 codec 必须排在下面的 {@code CODEC} 之前。</b>
+	 * 静态字段按声明顺序初始化，而 {@code CODEC} 会引用 {@code Visuals.CODEC}，
+	 * 后者又要读 {@code PARTICLE_CODEC}。顺序反了就会在初始化中途拿到 null，
+	 * 报 {@code ExceptionInInitializerError}，编译期和 CI 都抓不到。
+	 */
+	private static final Codec<ParticleOptions> PARTICLE_CODEC = Codec.withAlternative(
+			ParticleTypes.CODEC,
+			ResourceLocation.CODEC.comapFlatMap(
+					id -> {
+						ParticleType<?> type = BuiltInRegistries.PARTICLE_TYPE.get(id);
+						if (type instanceof ParticleOptions options) {
+							return DataResult.success(options);
+						}
+						return DataResult.error(() -> type == null
+								? "未知粒子 " + id
+								: "粒子 " + id + " 需要参数，请写成对象形式 {\"type\": \"" + id + "\", ...}");
+					},
+					options -> BuiltInRegistries.PARTICLE_TYPE.getKey(options.getType())
+			)
+	);
+
+	/** 音效 codec，同上：裸 id 和 {@code {"sound_id": ...}} 对象形式都收 */
+	private static final Codec<SoundEvent> SOUND_CODEC = Codec.withAlternative(
+			SoundEvent.DIRECT_CODEC,
+			ResourceLocation.CODEC.comapFlatMap(
+					id -> {
+						SoundEvent sound = BuiltInRegistries.SOUND_EVENT.get(id);
+						return sound != null
+								? DataResult.success(sound)
+								: DataResult.error(() -> "未知音效 " + id);
+					},
+					SoundEvent::getLocation
+			)
+	);
 
 	public static final Codec<ImpactEffect> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			Area.CODEC.fieldOf("area").forGetter(ImpactEffect::area),
@@ -177,20 +222,21 @@ public record ImpactEffect(
 	public record Blocks(
 			boolean destroy,
 			float maxHardness,
-			@Nullable ResourceLocation immuneTag,
+			Optional<ResourceLocation> immuneTag,
 			float dropRate,
 			boolean causesFire,
 			float entitizeChance
 	) {
 		/** 完全不碰方块 */
-		public static final Blocks NONE = new Blocks(false, 0.0F, null, 0.0F, false, 0.0F);
+		public static final Blocks NONE = new Blocks(false, 0.0F, Optional.empty(), 0.0F, false, 0.0F);
 
 		public static final Codec<Blocks> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 				Codec.BOOL.optionalFieldOf("destroy", false).forGetter(Blocks::destroy),
 				Codec.floatRange(-1.0F, 1000.0F).optionalFieldOf("max_hardness", 3.0F).forGetter(Blocks::maxHardness),
-				ResourceLocation.CODEC.optionalFieldOf("immune_tag")
-						.xmap(optional -> optional.orElse(null), Optional::ofNullable)
-						.forGetter(Blocks::immuneTag),
+				// 可空字段必须用 Optional 当 record 组件，**不能**用 xmap 转成 null：
+				// DFU 的 DataResult.Success 内部用 Optional.of() 包解码结果，
+				// 字段值为 null 就直接 NPE，而且是在读数据包时才炸，编译和 CI 都抓不到
+				ResourceLocation.CODEC.optionalFieldOf("immune_tag").forGetter(Blocks::immuneTag),
 				Codec.floatRange(0.0F, 1.0F).optionalFieldOf("drop_rate", 1.0F).forGetter(Blocks::dropRate),
 				Codec.BOOL.optionalFieldOf("causes_fire", false).forGetter(Blocks::causesFire),
 				Codec.floatRange(0.0F, 1.0F).optionalFieldOf("entitize_chance", 0.0F).forGetter(Blocks::entitizeChance)
@@ -221,10 +267,10 @@ public record ImpactEffect(
 				ParticleTypes.EXPLOSION_EMITTER, 1, SoundEvents.GENERIC_EXPLODE.value(), 1.0F, 1.0F, 0.0F);
 
 		public static final Codec<Visuals> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-				ParticleTypes.CODEC.optionalFieldOf("primary_particle", ParticleTypes.EXPLOSION_EMITTER)
+				PARTICLE_CODEC.optionalFieldOf("primary_particle", ParticleTypes.EXPLOSION_EMITTER)
 						.forGetter(Visuals::primaryParticle),
 				Codec.intRange(0, 4096).optionalFieldOf("particle_count", 1).forGetter(Visuals::particleCount),
-				SoundEvent.DIRECT_CODEC.optionalFieldOf("sound", SoundEvents.GENERIC_EXPLODE.value())
+				SOUND_CODEC.optionalFieldOf("sound", SoundEvents.GENERIC_EXPLODE.value())
 						.forGetter(Visuals::sound),
 				Codec.floatRange(0.0F, 16.0F).optionalFieldOf("sound_volume", 1.0F).forGetter(Visuals::soundVolume),
 				Codec.floatRange(0.0F, 4.0F).optionalFieldOf("sound_pitch", 1.0F).forGetter(Visuals::soundPitch),
@@ -276,8 +322,7 @@ public record ImpactEffect(
 
 		private boolean destroyBlocks = false;
 		private float maxHardness = 3.0F;
-		@Nullable
-		private ResourceLocation immuneTag = null;
+		private Optional<ResourceLocation> immuneTag = Optional.empty();
 		private float dropRate = 1.0F;
 		private boolean causesFire = false;
 		private float entitizeChance = 0.0F;
@@ -373,7 +418,7 @@ public record ImpactEffect(
 		}
 
 		public Builder immuneTag(ResourceLocation value) {
-			this.immuneTag = value;
+			this.immuneTag = Optional.ofNullable(value);
 			return this;
 		}
 
