@@ -123,8 +123,10 @@ public final class DoorSlam {
 	public enum KnockbackMode {
 		/** 切线 v = ω × r，物理最准，但扇形边缘会把实体推向门轴一侧 */
 		TANGENTIAL,
-		/** 门扇自由端的位移方向，判定区内统一一个方向，可预测 */
+		/** 门扇自由端的位移方向（closedDir → openDir 的差），45° 斜向 */
 		SWEEP,
+		/** 垂直于**交互后**的门板：开门推向 closedDir，关门推向 openDir */
+		NORMAL,
 		/** 从门轴往外推，永远远离门轴 */
 		RADIAL
 	}
@@ -149,9 +151,11 @@ public final class DoorSlam {
 	 * @param openDir   开门后门扇自由端的朝向
 	 * @param spin      角速度符号，+1 俯视逆时针、-1 顺时针，已按开/关取好向
 	 * @param sweep     SWEEP 模式用的固定方向
+	 * @param normal    NORMAL 模式用的固定方向，即交互后门板的法线
 	 * @param mode      击飞方向算法
 	 */
-	private record Swing(Vec3 hinge, Vec3 closedDir, Vec3 openDir, double spin, Vec3 sweep, KnockbackMode mode) {
+	private record Swing(Vec3 hinge, Vec3 closedDir, Vec3 openDir, double spin, Vec3 sweep,
+			Vec3 normal, KnockbackMode mode) {
 
 		static Swing of(BlockState state, BlockPos anchor, boolean open, DoorSlamConfig config) {
 			Direction facing = state.getValue(DoorBlock.FACING);
@@ -178,8 +182,12 @@ public final class DoorSlam {
 					? Vec3.ZERO
 					: sweep.normalize().scale(open ? 1.0D : -1.0D);
 
+			// NORMAL：垂直于交互后的门板。开门后门板沿 opened，法线就是 closed；
+			// 关门后门板沿 closed，法线是 opened。因为两者本来就正交，不用额外算
+			Vec3 normal = open ? closed : opened;
+
 			KnockbackMode parsed = parseMode(config.knockbackMode);
-			return new Swing(hinge, closed, opened, spin, sweep,
+			return new Swing(hinge, closed, opened, spin, sweep, normal,
 					parsed == null ? KnockbackMode.TANGENTIAL : parsed);
 		}
 
@@ -189,6 +197,7 @@ public final class DoorSlam {
 				// v = ω × r，ω 沿 Y 轴，因此切线方向是 (spin·z, 0, -spin·x)
 				case TANGENTIAL -> new Vec3(spin * radial.z, 0.0D, -spin * radial.x);
 				case SWEEP -> sweep;
+				case NORMAL -> normal;
 				case RADIAL -> radial;
 			};
 		}
