@@ -35,6 +35,9 @@ bin/
 # javap 调研 Minecraft API 的输出，可以反复重生，不入库
 .probe/
 
+# 收集好的待安装 jar，只是本地中转，不入库
+dist/
+
 # ---- JVM 崩溃产物 ----
 hs_err_*.log
 replay_*.log

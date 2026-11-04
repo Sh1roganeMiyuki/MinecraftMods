@@ -11,6 +11,8 @@ public class SpearMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		// 调试命令，长枪本体做好之前用它触发撞击引擎调数值
+		SpearCommands.register();
 		LOGGER.info("Spear Mod loaded");
 	}
 

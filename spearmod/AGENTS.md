@@ -43,10 +43,33 @@ ImpactEffects.get(ResourceLocation.parse("spearmod:tnt_spear_impact"))
 引擎的完整字段说明、Builder 用法、附魔衔接格式、安全底线，
 都在 **`../impactengine/AGENTS.md`**。
 
+## 调试命令
+
+长枪本体还没做，所以先给了一个“指哪打哪”的入口来调引擎数值（`SpearCommands.java`）：
+
+```
+/spear list                             列出已加载的撞击配置
+/spear impact <id>                      等级 1，打视线命中的位置
+/spear impact <id> <level>              指定附魔等级，试 LevelBasedValue 的成长曲线
+/spear impact <id> <level> <distance>   指定最大取点距离
+```
+
+例：`/spear impact spearmod:tnt_spear_impact 3`
+
+几个要点：
+
+- 需要 OP（权限等级 2），联机时不至于谁都能炸地图
+- 优先用视线真正命中的方块/实体位置，对着天空打空了就退回到眼前 4 格
+- `direction` 传的是玩家视线方向，所以锥形（`spear_thrust`）会朝你看的方向展开
+- 返回值是「破坏方块数 + 命中实体数」，命令也会把这两个数打在聊天框里，
+  方便确认“是真没打中”还是“打中了但数值太小看不出”
+- `/spear list` 为空时，先看日志里有没有 Codec 解析失败的 error，
+  单个 JSON 写错只会跳过它自己，不会拖垮整个加载
+
 ## 当前状态
 
-**只有骨架，还没有任何功能代码。** `SpearMod.onInitialize` 里目前只有一行日志，
-两份 JSON 也还没有任何东西去触发它们。
+**只有骨架 + 调试命令。** `SpearMod.onInitialize` 里除了注册命令只有一行日志，
+两份 JSON 靠上面的命令触发。
 
 待办：
 
