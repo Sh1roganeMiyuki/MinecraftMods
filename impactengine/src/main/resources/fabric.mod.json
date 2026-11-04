@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "impactengine",
+	"version": "${version}",
+	"name": "Impact Engine",
+	"description": "通用的物理撞击与破坏结算引擎，供各 mod 的武器、弹射物、技能冲撞共用。本身不含任何玩法内容，配置由使用方的数据包提供。",
+	"license": "CC0-1.0",
+	"icon": "assets/impactengine/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.example.impactengine.ImpactEngineMod"
+		],
+		"client": [
+			"com.example.impactengine.client.ImpactEngineModClient"
+		]
+	},
+	"mixins": [
+		"impactengine.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

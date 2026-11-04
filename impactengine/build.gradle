@@ -1,0 +1,9 @@
+// 公共配置（Loom、Minecraft/Fabric 依赖、仓库源与排序、Java 21、打包、发布、group 派生）
+// 全在仓库根 build.gradle 的 subprojects 块里。
+//
+// 这个文件目前没有内容，但它必须存在——settings.gradle 靠它识别子模块。
+//
+// 需要本 mod 独有的依赖时这样加：
+// dependencies {
+//     modImplementation "some.other:mod:x.y.z"
+// }

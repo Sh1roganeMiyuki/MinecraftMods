@@ -22,6 +22,7 @@
 		"fabricloader": ">=0.20.1",
 		"minecraft": "~1.21.1",
 		"java": ">=21",
-		"fabric-api": "*"
+		"fabric-api": "*",
+		"impactengine": "*"
 	}
 }

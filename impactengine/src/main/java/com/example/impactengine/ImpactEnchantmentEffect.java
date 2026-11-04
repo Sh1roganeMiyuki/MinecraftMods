@@ -1,6 +1,5 @@
-package com.example.funmod.impact;
+package com.example.impactengine;
 
-import com.example.funmod.FunMod;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
@@ -25,7 +24,7 @@ import net.minecraft.world.phys.Vec3;
  * <pre>{@code
  * {
  *   "anvil_cost": 4,
- *   "description": { "translate": "enchantment.funmod.spear_impact" },
+ *   "description": { "translate": "enchantment.spearmod.spear_impact" },
  *   "supported_items": "#minecraft:enchantable/sword",
  *   "weight": 2,
  *   "max_level": 3,
@@ -38,8 +37,8 @@ import net.minecraft.world.phys.Vec3;
  *         "enchanted": "attacker",
  *         "affected": "victim",
  *         "effect": {
- *           "type": "funmod:impact",
- *           "impact": "funmod:tnt_spear_impact"
+ *           "type": "impactengine:impact",
+ *           "impact": "spearmod:tnt_spear_impact"
  *         }
  *       }
  *     ]
@@ -70,7 +69,7 @@ public record ImpactEnchantmentEffect(ResourceLocation impact) implements Enchan
 			Entity target, Vec3 origin) {
 		ImpactEffect effect = ImpactEffects.get(impact).orElse(null);
 		if (effect == null) {
-			FunMod.LOGGER.error("[impact] 附魔引用的撞击配置 {} 不存在，检查 data/<命名空间>/impact_effects/ 下的文件名",
+			ImpactEngineMod.LOGGER.error("[impact] 附魔引用的撞击配置 {} 不存在，检查 data/<命名空间>/impact_effects/ 下的文件名",
 					impact);
 			return;
 		}

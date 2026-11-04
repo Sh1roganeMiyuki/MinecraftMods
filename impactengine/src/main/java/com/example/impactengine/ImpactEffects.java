@@ -1,6 +1,5 @@
-package com.example.funmod.impact;
+package com.example.impactengine;
 
-import com.example.funmod.FunMod;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -49,14 +48,14 @@ public final class ImpactEffects extends SimpleJsonResourceReloadListener
 		super(GSON, DIRECTORY);
 	}
 
-	/** 在 {@code FunMod.onInitialize} 里调用一次 */
+	/** 已由 {@code ImpactEngineMod.onInitialize} 调用，依赖本模块的 mod 不需要再管 */
 	public static void register() {
 		ResourceManagerHelper.get(PackType.SERVER_DATA).registerReloadListener(INSTANCE);
 	}
 
 	@Override
 	public ResourceLocation getFabricId() {
-		return FunMod.id(DIRECTORY);
+		return ImpactEngineMod.id(DIRECTORY);
 	}
 
 	@Override
@@ -65,11 +64,11 @@ public final class ImpactEffects extends SimpleJsonResourceReloadListener
 		Map<ResourceLocation, ImpactEffect> loaded = new HashMap<>();
 		prepared.forEach((id, json) -> {
 			DataResult<ImpactEffect> result = ImpactEffect.CODEC.parse(JsonOps.INSTANCE, json);
-			result.resultOrPartial(error -> FunMod.LOGGER.error("[impact] {} 解析失败: {}", id, error))
+			result.resultOrPartial(error -> ImpactEngineMod.LOGGER.error("[impact] {} 解析失败: {}", id, error))
 					.ifPresent(effect -> loaded.put(id, effect));
 		});
 		this.effects = Map.copyOf(loaded);
-		FunMod.LOGGER.info("[impact] 已加载 {} 个撞击效果配置", loaded.size());
+		ImpactEngineMod.LOGGER.info("[impact] 已加载 {} 个撞击效果配置", loaded.size());
 	}
 
 	/** 按 id 取配置，不存在时返回空 */

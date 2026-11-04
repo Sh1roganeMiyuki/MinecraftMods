@@ -1,4 +1,4 @@
-package com.example.funmod.impact;
+package com.example.impactengine;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;

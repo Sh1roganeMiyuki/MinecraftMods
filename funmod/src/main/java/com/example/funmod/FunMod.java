@@ -1,11 +1,7 @@
 package com.example.funmod;
 
 import com.example.funmod.doorslam.DoorSlamConfig;
-import com.example.funmod.impact.ImpactEffects;
-import com.example.funmod.impact.ImpactEnchantmentEffect;
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,12 +19,6 @@ public class FunMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		DOOR_SLAM = DoorSlamConfig.load();
-
-		// 撞击结算引擎：从数据包加载配置，并把自己注册成附魔可用的效果类型
-		ImpactEffects.register();
-		Registry.register(BuiltInRegistries.ENCHANTMENT_ENTITY_EFFECT_TYPE, id("impact"),
-				ImpactEnchantmentEffect.CODEC);
-
 		LOGGER.info("Fun Mod loaded");
 	}
 

@@ -12,9 +12,55 @@ MinecraftMods/
 ├── LICENSE              全仓库共享
 ├── .github/workflows/build.yml   CI，一条命令构建所有 mod
 ├── tools/new-mod.ps1    新建 mod 的脚手架
+├── impactengine/        **共享库**：撞击与破坏结算引擎，给其他 mod 依赖
 ├── funmod/              子模块：门扇挥扫冲击
-└── spearmod/            子模块：（待实现）
+└── spearmod/            子模块：长枪（骨架，依赖 impactengine）
 ```
+
+---
+
+## 共享库模块
+
+目前只有一个：
+
+| 模块 | 作用 | 详细文档 |
+|---|---|---|
+| `impactengine` | 通用的物理撞击与破坏结算引擎（伤害、击退、方块破坏、粒子音效、附魔衔接） | [`impactengine/AGENTS.md`](impactengine/AGENTS.md) |
+
+它本身是一个**真 mod**（有自己的 `fabric.mod.json` 和 jar），不是普通 library。
+这么做是因为它里面有静态状态（数据包加载的配置表），如果用 jar-in-jar 嵌到每个 mod 里，
+每个 mod 的 classloader 会各持一份，同一份 JSON 被加载多遍、配置表彼此看不见。
+
+**想用引擎的 mod 要做两件事：**
+
+```gradle
+// <你的 mod>/build.gradle
+// 注意：必须在 dependencies 块外先拿 Project 对象，块内的 project(...)
+// 返回的是 ProjectDependency，上面没有 sourceSets 属性
+def impactEngine = project(':impactengine')
+
+dependencies {
+	// 不能写 modImplementation project(':impactengine')，会死锁，原因见下面「已知的坑」第 8 条
+	implementation project(path: ':impactengine', configuration: 'namedElements')
+	clientImplementation impactEngine.sourceSets.client.output
+}
+```
+
+```json
+// <你的 mod>/src/main/resources/fabric.mod.json
+"depends": {
+	"fabricloader": ">=0.20.1",
+	"minecraft": "~1.21.1",
+	"java": ">=21",
+	"fabric-api": "*",
+	"impactengine": "*"
+}
+```
+
+第二件容易漏：`implementation` 只管编译期，**运行时靠 `fabric.mod.json` 的 `depends`**。
+漏了它，开发环境跑得好好，发给朋友就报缺失依赖。
+
+联机时每个人要装两个 jar（你的 mod + impactengine）。
 
 ---
 
@@ -141,6 +187,32 @@ workflow 已经统一加了 `-Dorg.gradle.java.home="$JAVA_HOME"`。
 
 已配全局：`http.https://github.com.proxy = http://127.0.0.1:7900`。
 代理软件关掉后 push 会失败，届时 `git config --global --unset http.https://github.com.proxy`。
+
+### 8. 跨子模块依赖另一个 mod 必须用 `namedElements`
+
+`modImplementation project(':impactengine')` 会**死锁**：Loom 在配置阶段就要读对方的
+ remapped jar 来解析 `fabric.mod.json`，可那时 jar 还没构建出来，报
+`Failed to read metadata from .../impactengine-0.1.0.jar`。
+
+而且没得逃：单独跑 `./gradlew :impactengine:build` 也一样失败，因为根 `build.gradle`
+的 `subprojects {}` 会配置所有子项目，`--configure-on-demand` 对此无效。
+
+正确写法（Loom 官方文档 "Depending on Remapped Subprojects"）：
+
+```gradle
+def impactEngine = project(':impactengine')   // 必须在 dependencies 块外
+
+dependencies {
+	implementation project(path: ':impactengine', configuration: 'namedElements')
+	clientImplementation impactEngine.sourceSets.client.output
+}
+```
+
+`namedElements` 暴露的是未 remap 的输出，配置阶段不需要 jar 存在，死锁就绕开了。
+第二行是因为开了 `splitEnvironmentSourceSets()`，不接对方的 client 源集就引用不到它的客户端类。
+
+还有个容易漏的：`implementation` 只管编译期，**运行时要靠 `fabric.mod.json` 里的
+`"impactengine": "*"` 声明**。漏了它开发环境跑得好好，发给朋友就报缺失依赖。
 
 ---
 

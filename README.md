@@ -7,8 +7,11 @@ Minecraft 1.21.1 + Fabric 小玩法模组的 **Gradle 多模块 monorepo**。
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
+| [impactengine](impactengine/) | **共享库**：通用撞击与破坏结算引擎，不含玩法 | 引擎完成，游戏内待验证 |
 | [funmod](funmod/) | 门扇挥扫冲击等小玩法 | 门挥扫已实现，游戏内待验证 |
-| [spearmod](spearmod/) | 长枪武器与相关附魔 | 只有骨架 |
+| [spearmod](spearmod/) | 长枪武器与相关附魔，依赖 impactengine | 只有骨架 |
+
+其他 mod 想用引擎，按 [impactengine/AGENTS.md](impactengine/AGENTS.md) 第一节的两步接上。
 
 ## 新建一个 mod
 

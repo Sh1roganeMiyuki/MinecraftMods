@@ -1,6 +1,5 @@
-package com.example.funmod.impact;
+package com.example.impactengine;
 
-import com.example.funmod.FunMod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -123,7 +122,7 @@ public final class ImpactEngine {
 		ImpactEffect.Blocks config = effect.blocks();
 		float scanRadius = Math.min(radius, MAX_BLOCK_SCAN_RADIUS);
 		if (scanRadius < radius) {
-			FunMod.LOGGER.warn("[impact] 半径 {} 超过方块扫描上限 {}，方块破坏按上限处理（实体判定不受影响）",
+			ImpactEngineMod.LOGGER.warn("[impact] 半径 {} 超过方块扫描上限 {}，方块破坏按上限处理（实体判定不受影响）",
 					radius, MAX_BLOCK_SCAN_RADIUS);
 		}
 
@@ -300,7 +299,7 @@ public final class ImpactEngine {
 		for (ImpactEffect.StatusEffect configured : effect.statusEffects()) {
 			@Nullable MobEffect mobEffect = BuiltInRegistries.MOB_EFFECT.get(configured.effect());
 			if (mobEffect == null) {
-				FunMod.LOGGER.warn("[impact] 未知的药水效果 {}，已跳过", configured.effect());
+				ImpactEngineMod.LOGGER.warn("[impact] 未知的药水效果 {}，已跳过", configured.effect());
 				continue;
 			}
 			// 时长随衰减缩短，至少给 1 tick，否则边缘命中会完全没效果
@@ -317,7 +316,7 @@ public final class ImpactEngine {
 		ResourceKey<DamageType> key = ResourceKey.create(Registries.DAMAGE_TYPE, effect.damage().damageType());
 		@Nullable DamageType type = registry.get(key);
 		if (type == null) {
-			FunMod.LOGGER.error("[impact] damage_type {} 不存在，回退到 minecraft:generic。检查 JSON 或数据包",
+			ImpactEngineMod.LOGGER.error("[impact] damage_type {} 不存在，回退到 minecraft:generic。检查 JSON 或数据包",
 					effect.damage().damageType());
 			key = DamageTypes.GENERIC;
 			type = registry.get(key);

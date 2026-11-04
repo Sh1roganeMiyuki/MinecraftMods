@@ -1,9 +1,23 @@
-// 公共配置（Loom、Minecraft/Fabric 依赖、Java 21、打包、发布、group 派生）
+// 公共配置（Loom、Minecraft/Fabric 依赖、仓库源与排序、Java 21、打包、发布、group 派生）
 // 全在根 build.gradle 的 subprojects 块里。这里只写 spearmod 自己特有的东西。
-//
-// 目前没有，所以这个文件是空的——但它必须存在，settings.gradle 靠它识别子模块。
-//
-// 需要额外依赖时这样加：
-// dependencies {
-//     modImplementation "net.fabricmc.fabric-api:fabric-api:0.116.17+1.21.1"
-// }
+
+// 跨项目访问 sourceSets 必须在 dependencies 块外先拿到 Project 对象：
+// 块内的 project(...) 返回的是 ProjectDependency，上面根本没有 sourceSets 属性
+def impactEngine = project(':impactengine')
+
+dependencies {
+	// 跨子模块依赖另一个 Loom 项目，必须走 namedElements。
+	//
+	// 写成 modImplementation project(':impactengine') 会死锁：Loom 在【配置阶段】
+	// 就要读对方的 remapped jar 来解析 fabric.mod.json，可那个 jar 还没构建出来，
+	// 于是报 "Failed to read metadata from .../impactengine-0.1.0.jar"。
+	// 单独构建 :impactengine 也救不了，因为根 build.gradle 的 subprojects{} 会配置所有子项目。
+	//
+	// namedElements 暴露的是未 remap 的输出，配置阶段不需要 jar 存在，绕开了这个死锁。
+	// 依据：https://docs.fabricmc.net/develop/loom/ 的 "Depending on Remapped Subprojects"
+	implementation project(path: ':impactengine', configuration: 'namedElements')
+
+	// 用了 splitEnvironmentSourceSets() 的多项目，还要单独接对方的 client 源集，
+	// 否则 dev 环境里引用不到对方的客户端类
+	clientImplementation impactEngine.sourceSets.client.output
+}
