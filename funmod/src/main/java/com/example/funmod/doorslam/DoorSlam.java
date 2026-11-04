@@ -182,10 +182,13 @@ public final class DoorSlam {
 					? Vec3.ZERO
 					: sweep.normalize().scale(open ? 1.0D : -1.0D);
 
-			// NORMAL：垂直于交互后的门板。开门后门板沿 opened，法线就是 closed；
-			// 关门后门板沿 closed，法线是 opened。因为两者本来就正交，不用额外算。
-			// 法线有两个朝向，哪个算“推”得看门的安装方向，所以符号可配
-			Vec3 normal = (open ? closed : opened).scale(config.normalFlip ? -1.0D : 1.0D);
+			// NORMAL：门板只有 3/16 厚，贴在方块的一条**边**上，不是方块中心。
+			// 击飞方向取“从那条边指向方块外”，而不是指向方块内部：
+			//   开门后门板贴在门轴那条边 → 推向 side
+			//   关门后门板贴在 FACING 那条边 → 推向 facing
+			// 注意这恰好是 closedDir/openDir 的相反数——那两个是“从门轴指向门扇自由端”，
+			// 方向朝方块内部，不是朝外
+			Vec3 normal = vector(open ? side : facing);
 
 			KnockbackMode parsed = parseMode(config.knockbackMode);
 			return new Swing(hinge, closed, opened, spin, sweep, normal,
@@ -290,9 +293,9 @@ public final class DoorSlam {
 				+ "\n门轴坐标 " + fmt(axis)
 				+ "\nclosedDir(关门时门扇指向)=" + compass(closed)
 				+ "  openDir(开门后门扇指向)=" + compass(opened)
-				+ "\n【开门】NORMAL=" + compass(closed)
+				+ "\n【开门】NORMAL(推向门轴那侧的方块外)=" + compass(vector(side))
 				+ "  SWEEP=" + compass(opened.subtract(closed))
-				+ "\n【关门】NORMAL=" + compass(opened)
+				+ "\n【关门】NORMAL(推向 FACING 那侧的方块外)=" + compass(vector(facing))
 				+ "  SWEEP=" + compass(closed.subtract(opened))
 				+ "\nTANGENTIAL/RADIAL 取决于实体站位，不固定；门扇只扫 closedDir→openDir 那个 90° 象限";
 	}

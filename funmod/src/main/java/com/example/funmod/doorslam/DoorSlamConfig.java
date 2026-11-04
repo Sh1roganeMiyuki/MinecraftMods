@@ -46,19 +46,13 @@ public final class DoorSlamConfig {
 	 *       会被推向门轴一侧（站在正南的人可能往正西飞），玩起来可能别扭</li>
 	 *   <li>{@code SWEEP} —— 门扇自由端的位移方向，整个判定区**统一一个方向**。
 	 *       可预测，不会把人拍向墙，也不会随站位变来变去</li>
-	 *   <li>{@code NORMAL} —— 垂直于**交互后**的门板：开门推向 closedDir、关门推向 openDir。
-	 *       对应“门从一字型变 I 型，那就沿 I 型的垂直方向推开”。实测手感最好，所以是默认值；
-	 *       方向觉得反了就用 {@link #normalFlip} 翻</li>
+	 *   <li>{@code NORMAL} —— 从门板所在的那条边指向方块**外**。
+	 *       关门时门板贴 FACING 那条边，所以推向 facing；开门后门板贴门轴那条边，推向 side。
+	 *       实测手感最好，所以是默认值</li>
 	 *   <li>{@code RADIAL} —— 从门轴往外推，永远远离门轴</li>
 	 * </ul>
 	 */
 	public String knockbackMode = "NORMAL";
-
-	/**
-	 * 翻转 NORMAL 模式的方向。门板法线有两个朝向，哪个算“推”取决于门的安装方向，
-	 * 光靠推导定不下来，所以做成可调的。用 {@code /funmod flip} 可以当场试。
-	 */
-	public boolean normalFlip = false;
 
 	/**
 	 * 水平速度上限，block/tick。击退改成叠加之后必须有这个：

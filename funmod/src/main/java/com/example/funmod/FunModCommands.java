@@ -16,7 +16,6 @@ import net.minecraft.world.phys.HitResult;
  * <pre>
  * /funmod reload        重新读 config/funmod/door-slam.json，改了数值不用重启游戏
  * /funmod mode &lt;名字&gt;    直接切击飞方向算法，连文件都不用改
- * /funmod flip          翻转 NORMAL 模式的方向
  * /funmod probe         对着门用，把该门的几何量和各模式方向打出来
  * /funmod config        把当前生效的参数打出来
  * </pre>
@@ -58,14 +57,6 @@ public final class FunModCommands {
 									ctx.getSource().sendSuccess(() -> Component.literal(report), false);
 									return 1;
 								}))
-						.then(Commands.literal("flip")
-								.executes(ctx -> {
-									FunMod.DOOR_SLAM.normalFlip = !FunMod.DOOR_SLAM.normalFlip;
-									boolean flipped = FunMod.DOOR_SLAM.normalFlip;
-									ctx.getSource().sendSuccess(() -> Component.literal(
-											"NORMAL 方向已切到" + (flipped ? "反向" : "正向") + "，去开关门试试"), true);
-									return 1;
-								}))
 						.then(Commands.literal("mode")
 								.then(Commands.argument("mode", StringArgumentType.word())
 										.executes(ctx -> {
@@ -92,7 +83,6 @@ public final class FunModCommands {
 				+ "，容差 " + c.angleTolerance
 				+ "，速度上限 " + c.maxHorizontalSpeed
 				+ "，方向模式 " + c.knockbackMode
-				+ ("NORMAL".equalsIgnoreCase(c.knockbackMode) && c.normalFlip ? "（已翻转）" : "")
 				+ (c.enabled ? "" : "（已禁用）");
 	}
 }
