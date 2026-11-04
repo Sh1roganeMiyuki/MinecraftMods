@@ -259,6 +259,59 @@ public final class DoorSlam {
 		return entity.isAlive() && !entity.isSpectator() && !entity.isPassenger();
 	}
 
+	/**
+	 * 诊断用：把一扇门的几何量和四种模式算出来的方向全部打出来。
+	 *
+	 * <p>存在的原因是方向这种东西光靠推导对不上实际观感：开门和关门需要的符号
+	 * 可能并不一致，而“垂直于门板”到底是哪一个朝向也取决于人站在哪里看。
+	 * 拿实际数值对着游戏里的现象比，比在纸上推快得多。
+	 */
+	public static String describe(Level level, BlockPos pos) {
+		BlockState state = level.getBlockState(pos);
+		if (!(state.getBlock() instanceof DoorBlock)) {
+			return pos.toShortString() + " 不是门";
+		}
+
+		Direction facing = state.getValue(DoorBlock.FACING);
+		DoorHingeSide hinge = state.getValue(DoorBlock.HINGE);
+		Direction side = hinge == DoorHingeSide.LEFT ? facing.getCounterClockWise() : facing.getClockWise();
+		DoubleBlockHalf half = state.getValue(DoorBlock.HALF);
+		BlockPos anchor = half == DoubleBlockHalf.LOWER ? pos : pos.relative(half.getDirectionToOther());
+
+		Vec3 closed = vector(side).scale(-1.0D);
+		Vec3 opened = vector(facing).scale(-1.0D);
+		Vec3 axis = Vec3.atBottomCenterOf(anchor)
+				.add(vector(facing).scale(PANEL_INSET))
+				.add(vector(side).scale(0.5D));
+
+		return "\n门 " + anchor.toShortString()
+				+ " | FACING=" + facing.getName() + " HINGE=" + hinge.name().toLowerCase(Locale.ROOT)
+				+ " 门轴在" + side.getName() + "侧"
+				+ "\n门轴坐标 " + fmt(axis)
+				+ "\nclosedDir(关门时门扇指向)=" + compass(closed)
+				+ "  openDir(开门后门扇指向)=" + compass(opened)
+				+ "\n【开门】NORMAL=" + compass(closed)
+				+ "  SWEEP=" + compass(opened.subtract(closed))
+				+ "\n【关门】NORMAL=" + compass(opened)
+				+ "  SWEEP=" + compass(closed.subtract(opened))
+				+ "\nTANGENTIAL/RADIAL 取决于实体站位，不固定；门扇只扫 closedDir→openDir 那个 90° 象限";
+	}
+
+	private static String fmt(Vec3 v) {
+		return String.format(Locale.ROOT, "(%.2f, %.2f, %.2f)", v.x, v.y, v.z);
+	}
+
+	/** 把水平向量译成罗盘方位，45° 斜向会说成“东南”这种 */
+	private static String compass(Vec3 v) {
+		if (v.lengthSqr() < 1.0E-6) {
+			return "无";
+		}
+		String ns = v.z < -0.1D ? "北" : (v.z > 0.1D ? "南" : "");
+		String ew = v.x < -0.1D ? "西" : (v.x > 0.1D ? "东" : "");
+		String name = ns + ew;
+		return name.isEmpty() ? fmt(v) : name;
+	}
+
 	private static void feedback(Level level, BlockPos anchor, Swing swing, DoorSlamConfig config) {
 		level.playSound(null, anchor, SoundEvents.SHIELD_BLOCK, SoundSource.BLOCKS,
 				config.soundVolume, 0.85F + level.getRandom().nextFloat() * 0.3F);

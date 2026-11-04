@@ -6,6 +6,9 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 /**
  * 调手感用的命令。
@@ -14,6 +17,7 @@ import net.minecraft.network.chat.Component;
  * /funmod reload        重新读 config/funmod/door-slam.json，改了数值不用重启游戏
  * /funmod mode &lt;名字&gt;    直接切击飞方向算法，连文件都不用改
  * /funmod flip          翻转 NORMAL 模式的方向
+ * /funmod probe         对着门用，把该门的几何量和各模式方向打出来
  * /funmod config        把当前生效的参数打出来
  * </pre>
  *
@@ -40,6 +44,18 @@ public final class FunModCommands {
 						.then(Commands.literal("config")
 								.executes(ctx -> {
 									ctx.getSource().sendSuccess(() -> Component.literal(describe()), true);
+									return 1;
+								}))
+						.then(Commands.literal("probe")
+								.executes(ctx -> {
+									ServerPlayer player = ctx.getSource().getPlayerOrException();
+									HitResult hit = player.pick(6.0D, 0.0F, false);
+									if (!(hit instanceof BlockHitResult blockHit)) {
+										ctx.getSource().sendFailure(Component.literal("对着门再用这个命令"));
+										return 0;
+									}
+									String report = DoorSlam.describe(player.level(), blockHit.getBlockPos());
+									ctx.getSource().sendSuccess(() -> Component.literal(report), false);
 									return 1;
 								}))
 						.then(Commands.literal("flip")
