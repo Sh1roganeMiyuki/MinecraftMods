@@ -1,0 +1,84 @@
+package com.example.funmod.impact;
+
+import com.example.funmod.FunMod;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.JsonOps;
+import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
+import net.minecraft.util.profiling.ProfilerFiller;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * 从数据包加载 {@link ImpactEffect} 配置。
+ *
+ * <p>JSON 放在 {@code data/<命名空间>/impact_effects/<名字>.json}，
+ * id 由文件路径决定：{@code data/my_pack/impact_effects/tnt_spear.json} → {@code my_pack:tnt_spear}。
+ *
+ * <p>走数据包而不是 config 目录，好处是：
+ * <ul>
+ *   <li>{@code /reload} 热重载，调数值不用重启</li>
+ *   <li>能放进整合包/服务器数据包分发，玩家不用改本地配置</li>
+ *   <li>和附魔、伤害类型这些 1.21 的数据驱动内容处于同一层级，附魔 JSON 能直接按 id 引用</li>
+ * </ul>
+ *
+ * <p>字段缺失会用 {@link ImpactEffect} 里各 record 的默认值；解析失败只跳过该文件并记 error，
+ * 不会拖垮整个 reload。
+ */
+public final class ImpactEffects extends SimpleJsonResourceReloadListener
+		implements IdentifiableResourceReloadListener {
+
+	public static final String DIRECTORY = "impact_effects";
+	public static final ImpactEffects INSTANCE = new ImpactEffects();
+
+	private static final Gson GSON = new GsonBuilder().create();
+
+	/** reload 期间用 volatile 整体替换，读取方永远看到一致的快照 */
+	private volatile Map<ResourceLocation, ImpactEffect> effects = Map.of();
+
+	private ImpactEffects() {
+		super(GSON, DIRECTORY);
+	}
+
+	/** 在 {@code FunMod.onInitialize} 里调用一次 */
+	public static void register() {
+		ResourceManagerHelper.get(PackType.SERVER_DATA).registerReloadListener(INSTANCE);
+	}
+
+	@Override
+	public ResourceLocation getFabricId() {
+		return FunMod.id(DIRECTORY);
+	}
+
+	@Override
+	protected void apply(Map<ResourceLocation, JsonElement> prepared, ResourceManager manager,
+			ProfilerFiller profiler) {
+		Map<ResourceLocation, ImpactEffect> loaded = new HashMap<>();
+		prepared.forEach((id, json) -> {
+			DataResult<ImpactEffect> result = ImpactEffect.CODEC.parse(JsonOps.INSTANCE, json);
+			result.resultOrPartial(error -> FunMod.LOGGER.error("[impact] {} 解析失败: {}", id, error))
+					.ifPresent(effect -> loaded.put(id, effect));
+		});
+		this.effects = Map.copyOf(loaded);
+		FunMod.LOGGER.info("[impact] 已加载 {} 个撞击效果配置", loaded.size());
+	}
+
+	/** 按 id 取配置，不存在时返回空 */
+	public static Optional<ImpactEffect> get(ResourceLocation id) {
+		return Optional.ofNullable(INSTANCE.effects.get(id));
+	}
+
+	/** 只读快照，供命令或调试用 */
+	public static Map<ResourceLocation, ImpactEffect> getAll() {
+		return INSTANCE.effects;
+	}
+}

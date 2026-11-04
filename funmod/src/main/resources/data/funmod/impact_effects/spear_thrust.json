@@ -1,0 +1,48 @@
+{
+	"area": {
+		"radius": {
+			"type": "minecraft:linear",
+			"base": 4.0,
+			"per_level_above_first": 1.0
+		},
+		"shape": "cone",
+		"cone_angle": 70.0,
+		"falloff": "exponential"
+	},
+
+	"damage": {
+		"base_amount": {
+			"type": "minecraft:linear",
+			"base": 6.0,
+			"per_level_above_first": 3.0
+		},
+		"damage_type": "minecraft:player_attack",
+		"self_damage_multiplier": 0.0
+	},
+
+	"knockback": {
+		"horizontal_strength": {
+			"type": "minecraft:linear",
+			"base": 1.2,
+			"per_level_above_first": 0.4
+		},
+		"upward_bias": 0.3,
+		"mode": "directional",
+		"exclude_source": true
+	},
+
+	"blocks": {
+		"destroy": false
+	},
+
+	"status_effects": [],
+
+	"visuals": {
+		"primary_particle": "minecraft:sweep_attack",
+		"particle_count": 8,
+		"sound": "minecraft:entity.player.attack.sweep",
+		"sound_volume": 1.0,
+		"sound_pitch": 0.9,
+		"camera_shake": 0.0
+	}
+}

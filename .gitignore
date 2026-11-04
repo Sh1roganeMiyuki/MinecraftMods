@@ -32,6 +32,9 @@ bin/
 .*.json
 .gh*
 
+# javap 调研 Minecraft API 的输出，可以反复重生，不入库
+.probe/
+
 # ---- JVM 崩溃产物 ----
 hs_err_*.log
 replay_*.log

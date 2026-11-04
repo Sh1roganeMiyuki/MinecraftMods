@@ -60,9 +60,98 @@
 - 默认水平初速度 = `horizontalStrength(1.5)` × 杠杆系数 `[0.8, 1.2]`，落在 1.2~1.8 block/tick；
   杠杆系数来自刚体旋转 `v = ω × r`，所以贴门轴几乎不动、门扇外缘打得最狠
 
+### 撞击结算引擎（`impact`）
+
+所有武器、弹射物、技能冲撞共用的一条结算路径。代码在
+`src/main/java/com/example/funmod/impact/`，包不依赖 funmod 其他部分，
+将来要抽成独立子模块给别的 mod 用，直接整个包搬走即可。
+
+**配置与上下文分离**，这是用之前必须想清楚的一点：
+
+- `ImpactEffect` = 纯配置（不可变 record，可序列化、可复用）
+- `Level` / 中心坐标 / 方向 / 来源实体 / 附魔等级 = 执行时上下文，走 `ImpactEngine.execute()` 的参数
+
+把 Level、center 这些塞进配置对象里看着方便，但那份配置就只能用一次，
+同一份 JSON 没法在不同位置、被不同武器反复触发。
+
+三种用法：
+
+```java
+// 1. 代码里现场构造
+ImpactEffect effect = ImpactEffect.builder()
+        .shape(ImpactEffect.Shape.CONE).radius(4.0F).coneAngleDegrees(70.0F)
+        .damage(6.0F).damageType(DamageTypes.PLAYER_ATTACK.location())
+        .knockback(1.2F, 0.3F).knockbackMode(ImpactEffect.KnockbackMode.DIRECTIONAL)
+        .build();
+ImpactEngine.execute(serverLevel, effect, center, lookDirection, attacker);
+
+// 2. 引用数据包里的配置（推荐，调数值不用重编译）
+ImpactEffects.get(FunMod.id("tnt_spear_impact"))
+        .ifPresent(e -> ImpactEngine.execute(serverLevel, e, center, dir, source));
+
+// 3. 挂在附魔上（见下）
+```
+
+**JSON 配置**放在 `data/<命名空间>/impact_effects/<名字>.json`，
+id 由文件路径决定（`data/funmod/impact_effects/tnt_spear_impact.json` → `funmod:tnt_spear_impact`），
+文件里不需要也不应该写 `id` 字段。走数据包而不是 `config/` 目录，因为：
+`/reload` 能热重载、能随整合包分发、和附魔/伤害类型这些 1.21 数据驱动内容同层。
+
+**数值字段全部是 `LevelBasedValue`**，不是裸 float。它的 CODEC 同时接受两种写法：
+
+```json
+"base_amount": 12.0                                                    // 各级一致
+"base_amount": { "type": "minecraft:linear", "base": 6.0, "per_level_above_first": 3.0 }   // 随附魔等级成长
+```
+
+适用于 `area.radius`、`damage.base_amount`、`knockback.horizontal_strength`、`knockback.upward_bias`。
+非附魔来源调用时传 `enchantmentLevel = 1`。
+
+**接附魔**：`ImpactEnchantmentEffect` 已注册到
+`BuiltInRegistries.ENCHANTMENT_ENTITY_EFFECT_TYPE`，类型 id 是 `funmod:impact`。
+附魔 JSON 里这样引用（**这三个细节都是用字节码核实过的，别凭直觉改**）：
+
+```json
+"effects": {
+  "minecraft:post_attack": [
+    {
+      "enchanted": "attacker",
+      "affected": "victim",
+      "effect": { "type": "funmod:impact", "impact": "funmod:tnt_spear_impact" }
+    }
+  ]
+}
+```
+
+- 键名是 `minecraft:post_attack`，**不是** `entity_effect`也不是 `hit`。
+  `EnchantmentEntityEffect` 能挂在 `post_attack`（攻击命中后）、`hit_block`（敲方块）、`tick` 三个键下
+- `post_attack` 用的是 `TargetedConditionalEffect`，比普通 `ConditionalEffect` 多一层
+  `enchanted` / `affected`，且效果体要包在 `"effect": { }` 里
+- `enchanted` 只接受 `"attacker"` 或 `"victim"`（原版字节码里的校验消息就是这么写的）
+
+**安全底线**（写在 `ImpactEngine` 里，不可配置、不可绕过）：
+
+- 硬度为负的方块一律免疫——基岩、屏障、末地传送门框架、命令方块
+- `wither_immune` / `dragon_immune` 标签的方块一律免疫，配置里的 `immune_tag` 是额外叠加的
+- 流体、空气不处理
+- 方块扫描半径上限 16 格（`MAX_BLOCK_SCAN_RADIUS`），防止配置写错把服务器卡死；
+  超限只影响方块破坏，实体判定不受限
+
+**两个实现细节踩过的坑**：
+
+- `BlockPos.betweenClosed(int...)` 返回的是 `Iterable`，没有 `.stream()`；
+  要接 Stream 得用 `betweenClosedStream(...)`。而且它给的是复用的
+  `MutableBlockPos`，不 `.map(BlockPos::immutable)` 就会全部指向同一个对象
+- `camera_shake > 0` 时走原版 `ClientboundExplodePacket`（一次拿到粒子+声音+屏幕震动），
+  此时 **knockback 传 `Vec3.ZERO`、toBlow 传空表**，因为击退已经逐实体精确算过了，
+  叠加两份会飞得离谱；`camera_shake == 0` 时走 `sendParticles` + `playSound`，粒子数量可精控
+
 ## 验证状态
 
 - 2026-11-03：独立项目架构下 `./gradlew build` 通过，产物含 `funmod-refmap.json`
 - 2026-11-03：迁移到 Gradle 多模块后重新构建通过，refmap 照常生成
-- **游戏内行为尚未验证**。`build` 通过只代表编译打包成功，冲力手感和扇形范围
-  仍需 `./gradlew :funmod:runClient` 实际开门拍几下。首次 `runClient` 会下载资源，耗时较长
+- 2026-11-04：`impact` 包编译打包通过，jar 里含 15 个 class、两份 `impact_effects` JSON、refmap。
+  所有 Minecraft API 签名都用 javap 核实过（调研输出在仓库根的 `.probe/`，已 gitignore）
+- **游戏内行为尚未验证**。`build` 通过只代表编译打包成功，冲力手感、扇形范围、
+  方块破坏与掉落率、JSON 能否被 `/reload` 正确加载，都仍需
+  `./gradlew :funmod:runClient` 实际跑一跑。首次 `runClient` 会下载资源，耗时较长
