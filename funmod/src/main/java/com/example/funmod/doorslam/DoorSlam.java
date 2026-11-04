@@ -183,8 +183,9 @@ public final class DoorSlam {
 					: sweep.normalize().scale(open ? 1.0D : -1.0D);
 
 			// NORMAL：垂直于交互后的门板。开门后门板沿 opened，法线就是 closed；
-			// 关门后门板沿 closed，法线是 opened。因为两者本来就正交，不用额外算
-			Vec3 normal = open ? closed : opened;
+			// 关门后门板沿 closed，法线是 opened。因为两者本来就正交，不用额外算。
+			// 法线有两个朝向，哪个算“推”得看门的安装方向，所以符号可配
+			Vec3 normal = (open ? closed : opened).scale(config.normalFlip ? -1.0D : 1.0D);
 
 			KnockbackMode parsed = parseMode(config.knockbackMode);
 			return new Swing(hinge, closed, opened, spin, sweep, normal,
@@ -225,10 +226,25 @@ public final class DoorSlam {
 		Vec3 push = swing.pushDirection(radial);
 		double horizontal = config.horizontalStrength * Mth.clamp(radius, LEVERAGE_MIN, LEVERAGE_MAX);
 		Vec3 motion = target.getDeltaMovement();
+
+		// 水平分量是**叠加**而不是覆盖：两扇邻接的门同时拍、或者门加上别的击退源，
+		// 应该累加成一记更狠的。写成覆盖的话后一扇会把前一扇直接抹掉，
+		// 现象就是两扇门一起踩却只朝最后一扇的方向飞
+		double nextX = motion.x + push.x * horizontal;
+		double nextZ = motion.z + push.z * horizontal;
+
+		// 上限，防红石时钟接门把实体发射到世界外
+		double flat = Math.sqrt(nextX * nextX + nextZ * nextZ);
+		if (flat > config.maxHorizontalSpeed) {
+			double scale = config.maxHorizontalSpeed / flat;
+			nextX *= scale;
+			nextZ *= scale;
+		}
+
 		target.setDeltaMovement(
-				push.x * horizontal,
+				nextX,
 				Math.max(motion.y, 0.0D) + config.verticalStrength,
-				push.z * horizontal);
+				nextZ);
 
 		// 只改速度不同步的话，客户端会按自己预测的位置把玩家拽回去
 		target.hurtMarked = true;
