@@ -374,6 +374,22 @@ Write-Tpl 'AGENTS.md' @'
 $env:JAVA_HOME = "__JAVA_HOME__"
 ```
 
+## 硬性规则
+
+**本 mod 里所有自定义爆破 / 爆炸 / 冲击，一律走 `impactengine`。**
+禁止直接调 `Level#explode(...)`，也禁止手写伤害/击退/破坏方块的逻辑。
+
+原版那一个 `radius` 把破坏范围、伤害、击退强度绑在同一个数上，拆不开；
+而引擎的 `blocks.*` / `knockback.*` / `damage.*` 是三组独立字段。
+安全底线（基岩等负硬度方块、`wither_immune` / `dragon_immune`、流体、扫描上限）
+和全局调参层也只有走引擎才能自动带上。
+
+接入三步、完整字段表、“写代码前先查引擎已经建模了什么”那个教训，
+全在 **`../impactengine/AGENTS.md`**。仓库级的五条硬性规则在 **`../AGENTS.md`** 开头。
+
+唯一可以不走的例外是**物理模型不同**（参考 funmod 的门挥扫：绕门轴切线击飞）。
+“引擎参数不够用”不算例外，那应该去给引擎加字段。
+
 ## 编码约定
 
 - 只用 Fabric API 和 Mojang 映射下的官方类；禁止 Forge / NeoForge API

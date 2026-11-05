@@ -3,6 +3,12 @@
 仓库级的环境事实、构建命令、已知的坑都在 **`../AGENTS.md`**，动手前先读那个。
 这里只记 spearmod 自己的东西。
 
+> **硬性规则**：本模块新增的任何爆破/爆炸/冲击都要走 `../impactengine`，
+> 禁止直接调 `Level#explode(...)`，也禁止手写伤害/击退/破坏方块的逻辑。
+> 本模块已经依赖好引擎了，接入三步和完整字段表在 **`../impactengine/AGENTS.md`**。
+> 写新效果前先翻那份字段表：很可能想要的行为引擎已经建模了（比如
+> `damage.self_damage_multiplier`、`knockback.exclude_source`）。
+
 ## 项目目标
 
 - 长枪武器及相关附魔

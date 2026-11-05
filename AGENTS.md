@@ -21,6 +21,91 @@ MinecraftMods/
 
 ---
 
+## 硬性规则（动手前先读完这一节）
+
+### 1. 所有自定义爆破 / 爆炸 / 冲击，一律走 ImpactEngine
+
+**禁止**在新代码里直接调 `Level#explode(...)` / `ServerLevel#explode(...)`，
+也**禁止**为爆炸效果手写伤害、击退、破坏方块的逻辑。要用爆炸就是三步：
+
+1. 写一份 `data/<你的命名空间>/impact_effects/<名字>.json`
+2. `ImpactEffects.get(<命名空间>:<名字>)` 拿到配置
+3. `ImpactEngine.execute(serverLevel, effect, center, direction, source, enchantLevel)`
+
+理由不是“统一风格”这种空话，是三件具体的事：
+
+- **参数拆得开。** 原版 `explode` 只有一个 `radius`，它同时驱动破坏范围、伤害、击退
+  三件事。想要“炸得不狠但推得远”或“跳得高但不留坑”，在原版模型里根本做不到。
+  引擎的 `blocks.*` / `knockback.*` / `damage.*` 是三组独立字段
+- **安全底线自动带上。** 硬度为负的方块（基岩、屏障、末地传送门框架、命令方块）、
+  `wither_immune` / `dragon_immune` 标签、流体、以及 16 格扫描上限——这些在
+  `ImpactEngine` 里写死，任何走引擎的效果都免疫，不需要每个 mod 各自记得
+- **全局调参层自动生效。** `ImpactTuning` 作用在 `execute()` 内部，所以新效果
+  不用做任何接入就能在游戏内配置界面里被调。手写 `explode()` 就调不了
+
+**已经踩过一次的代价**：烈焰弹最初用原版 `LargeFireball` 的 `level.explode()`，
+“破坏强度”和“击退强度”就是拆不开；后来为此手写了两个 Mixin（自伤减免、自身弹射），
+再后来才发现引擎的 `damage.self_damage_multiplier` 和 `knockback.exclude_source`
+本来就是这两件事，两个 Mixin 全删了。
+
+> **接引擎之前先查引擎已经建模了什么。** 完整字段表在
+> [`impactengine/AGENTS.md`](impactengine/AGENTS.md) 第四节。
+
+#### 这条规则由 CI 强制
+
+`.github/workflows/build.yml` 里有一个 `guard` step，在编译**之前**纯文本 grep
+所有 `*/src` 下的 `.java`，找到非注释行里的 `.explode(` 就直接 fail。
+所以这不是“建议遵守”，是推不上去。
+
+真有正当理由（就是下面那个例外）时，在**同一行**加注释：
+
+```java
+level.explode(...); // impact-engine-exempt: 绕门轴切线击飞，引擎的径向模型表达不了
+```
+
+守卫会跳过带这个标记的行。**不要把标记当成绕开审查的开关**：
+加了就得在 PR / commit message 里说清楚为什么引擎不够用，
+而且优先考虑的应该是“给引擎加字段”而不是“开例外”。
+
+> 注：本文件第 4 条说不要改 `build.yml`，那是指**不要为某个 mod 的特殊需求去改它**
+> （多分支并行时那里是最容易撞车的地方）。这个守卫是仓库级的架构约束，
+> 属于应该集中放在根配置里的那类改动。
+
+#### 什么时候可以不走引擎
+
+只有一个理由：**物理模型不同**。
+
+`funmod` 的门挥扫就没接——它是绕门轴的**切线**击飞，力度正比于到门轴的杠杆臂长，
+而引擎做的是径向/定向爆发，接过去会丢掉门轴杠杆这个最有意思的手感。
+
+**“引擎的参数不够用”不是理由**，那应该去给引擎加字段，让所有 mod 一起受益，
+而不是在自己模块里另写一套。
+
+### 2. 没代码读的配置字段不要加
+
+界面上拖了什么都不会发生，比没这个滑条更让人困惑。参数先有读取方，再加字段。
+
+### 3. 一个 mod 只能有一个 MidnightConfig 配置类
+
+`configInstances` 按 modid 索引，注册第二个会顶掉第一个。加新功能就往现有类里
+加字段 + 新的 `category` 标签页。
+
+### 4. 不要改这几个共享文件
+
+`.github/workflows/build.yml`、`tools/new-mod.ps1`、根 `build.gradle`、`settings.gradle`、
+`gradle/config-gui.gradle`。它们是所有 mod 的公共冲突点；某个 mod 独有的依赖
+写进它自己的 `build.gradle`。
+
+（例外：仓库级的架构约束该放这里，比如上面那个 explode 守卫。区分标准是
+“为某一个 mod 服务”还是“对所有 mod 生效”。）
+
+### 5. API 不确定就 javap 核，不要凭记忆
+
+尤其是“某个方法到底会不会被另一条路径调用”和“子类有没有覆写它”。
+本仓库已经因此翻过两次车，具体案例见下面「已知的坑」。
+
+---
+
 ## 共享库模块
 
 目前只有一个：
@@ -370,6 +455,7 @@ jar 在 `~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/` 下的
 ## 编码约定（所有 mod 通用）
 
 - 只用 Fabric API 和 Mojang 映射下的官方类；禁止 Forge / NeoForge API
+- **爆破/爆炸/冲击一律走 ImpactEngine**，详见开头「硬性规则」第 1 条
 - 伤害、击退、附魔触发等玩法逻辑必须在**服务端**执行；客户端只负责渲染、粒子、音效
 - 客户端专用类放 `src/client/java`，不要被服务端代码引用
 - 注册在各 mod 的 `<MainClass>.onInitialize` 中完成
@@ -387,6 +473,53 @@ jar 在 `~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/` 下的
 - 一次只实现一个功能，改完立即 `./gradlew :<modid>:build`，编译通过再继续
 - 做完一个功能就提交，commit message 说清"为什么这么做"，不只是"改了什么"
 - 临时诊断文件（查 API 的输出、构建日志）用 `.` 开头命名，根 `.gitignore` 已经忽略它们
+
+---
+
+## 交接状态
+
+这一节是**快照**，会随进度变。规则和坑在上面那几节，那些是长期有效的。
+
+### 已经能用的
+
+| 模块 / 功能 | 状态 |
+|---|---|
+| `impactengine` | 引擎完成。`/spear impact` 实测过爆炸/破坏/击退，手感可用 |
+| `impactengine` 配置界面 | `ImpactTuning` 全局倍率层，拖滑条立即生效 |
+| `funmod` doorslam | **已实测**。四种击飞方向选定 NORMAL 为默认；击退不叠加、NORMAL 方向公式整体取反两个 bug 已修 |
+| `funmod` fireball | 编译/打包/refmap/配置加载均验证，**游戏内手感未验证** |
+| `spearmod` | 只有骨架 + `/spear` 调试命令，**长枪本体没做** |
+| 配置 GUI | 三个 mod 都有，`config/*.json` 落盘验证过，Mod Menu 按钮自动出现 |
+| CI | 绿，`./gradlew build --continue` 一条命令构建全部 |
+
+### 下一次进游戏应该看的
+
+烈焰弹 `data/funmod/impact_effects/fireball.json` 里的 9 个数值**全是拍出来的**，重点：
+
+- `knockback.upward_bias: 1.0` → 火箭跳能跳多高（约 1 格/tick 初速，理论上 5 格左右）
+- `damage.base_amount: 8.0` → 打怪疼不疼（原版直击是 6.0）
+- `area.radius: 2.0` → 坑多大
+- `knockback.exclude_source: false` → **平扔贴墙时会不会把自己推得很烦**（这是火箭跳的代价）
+- 拿着烈焰弹能不能正常开箱子、冷却遮罩有没有画出来、低头扔会不会炸膛
+
+改完 `/reload` 就生效，不用重编译。整体强弱也可以直接在 Impact Engine 的配置界面拖倍率。
+
+### 明确没做的
+
+- **长枪物品本体**（`SpearItem`、材质、模型、突进、充能冷却）。
+  所以 `SpearConfig` 里刻意没有“冲刺初速度”“充能冷却”这类字段——
+  参见「硬性规则」第 2 条
+- `en_us.json` 翻译，目前只有 `zh_cn`。英文界面会直接显示翻译键名
+- 烈焰弹的 `fireball.json` 没有对应的游戏内命令入口（不像 `/spear impact`），
+  只能靠实际右键投掷测试
+- 仓库根有个 `testmod/` 空目录（脚手架测试残留）。git 看不见空目录，
+  不影响提交，想清就手动删
+
+### 产物位置
+
+- `dist/` 是待安装 jar 的集中地（已 gitignore）。四个：fabric-api + 三个 mod
+- **`funmod` 现在依赖 `impactengine`**，两个 jar 必须一起装
+- MidnightLib 已 jar-in-jar 打进每个 mod，玩家不用单独装；Mod Menu 可选
 
 ---
 

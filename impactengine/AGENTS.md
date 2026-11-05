@@ -9,6 +9,59 @@
 
 ---
 
+## 强制：仓库里所有自定义爆破都走这里
+
+这是仓库级的硬性规则（`../AGENTS.md` 开头第 1 条），不是建议：
+
+**禁止**在任何 mod 里直接调 `Level#explode(...)` / `ServerLevel#explode(...)`，
+也**禁止**为爆炸手写伤害、击退、破坏方块的逻辑。
+
+因为原版那一个 `radius` 把**破坏范围、实体伤害、击退强度**绑在同一个数上：
+想跳得高就得拉大威力，于是炸出大坑；想不留坑就得压威力，于是人也飞不起来。
+而本引擎的 `blocks.*` / `knockback.*` / `damage.*` 是三组独立字段，拆得开。
+另外安全底线（基岩等负硬度方块、`wither_immune` / `dragon_immune`、流体、
+16 格扫描上限）和全局调参层（`ImpactTuning`）也只有走引擎才能自动带上。
+
+### 接一个新爆破效果，三步
+
+```java
+// 1. 写配置：src/main/resources/data/<你的命名空间>/impact_effects/<名字>.json
+//    字段表见第四节，可以直接拷 funmod 的 fireball.json 或 spearmod 的 tnt_spear_impact.json 改
+
+// 2. 取配置（没加载到会返回 empty，别当它一定存在）
+ImpactEffect effect = ImpactEffects.get(ResourceLocation.parse("mymod:my_blast")).orElse(null);
+if (effect == null) {
+    return;   // 退回到原版行为，别把效果变成哑弹
+}
+
+// 3. 结算（只能在服务端调）
+ImpactEngine.execute(serverLevel, effect, center, direction, source, enchantLevel);
+```
+
+`direction` 只在 `shape: cone` 或 `knockback.mode: directional` 时用到，用不上就传 `null`。
+`enchantLevel` 非附魔来源传 `1`。
+
+### 写代码前先查引擎已经建模了什么
+
+这一条是**用真实代价换来的**：烈焰弹最初用原版 `level.explode()`，为了做
+“对自己免伤但仍把自己炸飞”（火箭跳），手写了两个 Mixin——一个改 `Player#hurt`
+的伤害数值，一个在 `LargeFireball#onHit` 的 TAIL 补一记冲量。接上引擎之后发现：
+
+| 手写的 Mixin 在做的事 | 引擎里本来就有的字段 |
+|---|---|
+| 自己的爆炸对自己减免伤害 | `damage.self_damage_multiplier` |
+| 爆炸把投掷者也推开 | `knockback.exclude_source: false` |
+
+两个 Mixin 全删了。所以下次想给爆炸加行为时，**先翻第四节的字段表**；
+确实没有的，优先给引擎加字段（所有 mod 一起受益），而不是在自己模块里另写一套。
+
+### 唯一可以不走的例外
+
+**物理模型不同**。`funmod` 的门挥扫就没接：它是绕门轴的切线击飞，
+力度正比于杠杆臂长，引擎的径向/定向模型表达不了。“参数不够用”不算例外。
+
+---
+
 ## 一、让你的 mod 用上它
 
 两步，漏一步都不行。
