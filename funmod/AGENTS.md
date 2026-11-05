@@ -6,15 +6,18 @@
 ## 项目目标
 
 - 受到 B 站 UP 主“老丹Daniel”的小玩法系列启发，为和朋友联机 PvP 制作小型、可独立测试的机制
-- 已计划功能：门开关把实体打飞（**已完成**）、长枪武器及相关附魔（已拆成独立子模块 `../spearmod`）
+- 已实现功能：门开关把实体打飞（`doorslam`）、手持烈焰弹掷出恶魂大火球（`fireball`）
+- 已拆出去的功能：长枪武器及相关附魔 → 独立子模块 `../spearmod`
 - 每个功能保持小范围，不做整合包规模的内容
 
 ## 本模块速查
 
 - 模组 ID：`funmod`；根包：`com.example.funmod`
+- 功能包：`doorslam`（门挥扫）、`fireball`（烈焰弹投掷）
 - 构建（在**仓库根**执行）：`./gradlew :funmod:build`
 - 开发客户端：`./gradlew :funmod:runClient`
 - 产物：`funmod/build/libs/funmod-0.1.0.jar`
+- Mixin：`DoorBlockMixin`（门）、`FireChargeItemMixin`（烈焰弹），都登记在 `funmod.mixins.json`
 
 ## funmod 独有的东西
 
@@ -131,6 +134,63 @@ closedDir/openDir，以及 NORMAL 和 SWEEP 在开门/关门两种情况下各�
 这里曾经还有 `reload`、`config`、`mode` 三个子命令，迁到 MidnightConfig 之后全删了：
 `reload` 没有“重读”这一步了，`config` 和界面重复，`mode` 界面上的循环按钮更快。
 
+### 烈焰弹投掷（`fireball`）
+
+手持烈焰弹右键 → 掷出原版恶魂大火球（`LargeFireball`），而不是原版的原地摩擦点火。
+代码在 `src/main/java/com/example/funmod/fireball/FireballThrower.java`。
+
+**两个入口，缺一个就只覆盖一半场景：**
+
+| 场景 | 拦截方式 |
+|---|---|
+| 右键**方块** | `FireChargeItemMixin` 注入 `FireChargeItem#useOn` 的 HEAD |
+| 右键**空气** | `FunMod.onInitialize` 里注册的 `UseItemCallback` |
+
+为什么不能只用一个 Mixin：1.21.1 的 `FireChargeItem` **只声明了 `useOn`、没有声明 `use`**
+（用 javap 核过，它只实现了 `ProjectileItem` 的那几个方法），对空右键落到基类 `Item#use`，
+而 Mixin 不能注入目标类里不存在的方法。
+
+**为什么方块那半边不用 `UseBlockCallback`（重要）**：那个事件在方块自己的
+`BlockState#useItemOn` **之前**触发，在那里返回 SUCCESS 会把箱子、工作台、熔炉、门
+全部吃掉——手里拿着烈焰弹就再也打不开箱子了。而 `useOn` 是原版在“方块没消费这次交互”
+之后才调用的，所以拦这里天然拿到正确的优先级。换成事件就得自己列“哪些方块算可交互”的
+名单，那种名单永远列不全。
+
+**冷却期间返回 `FAIL` 而不是 `PASS`**：FAIL 在这里是安全的，因为 `useOn` 只有在方块
+已经拒绝交互之后才会被调到，所以 FAIL 只会挡住“点火”这一件事，不会锁死箱子。
+用 PASS 的话冷却期间右键会退化成点火，投掷和点火交替出现，很怪。
+
+**两端都要做的三件事**（这是最容易错的地方）：
+
+```java
+level.playSound(...);                    // 两端
+player.getCooldowns().addCooldown(...);  // 两端
+if (!player.isCreative()) stack.shrink(1);  // 两端
+if (!level.isClientSide) spawn(...);     // 只有服务端
+return InteractionResult.sidedSuccess(level.isClientSide);
+```
+
+`ItemCooldowns` 和玩家物品栏都是**每端一份、彼此没有同步包**：冷却只在服务端记，
+客户端快捷栏就不会画冷却遮罩；消耗只在服务端做，客户端要等一个纠正包才更新。
+原版 `SnowballItem#use` 就是这个写法，直接抄。
+
+**不要手动 `player.swing(hand)`**：`sidedSuccess` 在客户端返回 SUCCESS，
+框架会自己摆手（原版雪球、烈焰弹点火都是这样）。再手动摆一次就是摆两下，动画看着抽一下。
+
+**防炸膛做了两层**，不是只把生成点往前推 1 格：
+
+1. `LargeFireball` 的构造器会把火球摆在 **owner 的位置**上，所以必须显式 `setPos`。
+   漏了这一步火球就在玩家脚下方块里生成，当 tick 撞地爆炸
+2. 平视时“前方 1 格”够（玩家碰撞箱半宽 0.3，火球半宽 0.5，中心在 1.0 时后缘在 0.5，
+   不重叠），但**低头投掷**时这个结论不成立——视线朝下，“往前 1 格”落到了自己脚下。
+   所以 `safeSpawnPoint` 会检查火球碰撞箱是否和玩家相交，相交就沿视线再推 0.5 格
+
+火球本体完全用原版 `LargeFireball`，所以这些是白送的：爆炸点火、小范围击退、
+以及**被剑打一下能反弹并转移归属**（`AbstractHurtingProjectile#hurt` 里的逻辑，
+owner 是谁都成立，所以自己也能把自己扔出去的火球打回去）。
+
+击杀计入玩家名下，因为构造器的第二个参数就是 owner。
+
 ### 关于撞击结算引擎
 
 通用引擎已经抽成独立子模块 **`../impactengine`**，完整文档在 `../impactengine/AGENTS.md`。
@@ -148,5 +208,12 @@ closedDir/openDir，以及 NORMAL 和 SWEEP 在开门/关门两种情况下各�
 - 2026-11-03：迁移到 Gradle 多模块后重新构建通过，refmap 照常生成
 - 2026-11-04：`impact` 包抽离到 `../impactengine` 后重新构建通过，
   jar 里只剩 doorslam + mixin + refmap，无残留
-- **游戏内行为尚未验证**。`build` 通过只代表编译打包成功，冲力手感和扇形范围
-  仍需 `./gradlew :funmod:runClient` 实际开门拍几下。首次 `runClient` 会下载资源，耗时较长
+- 2026-11-05：门挥扫**已实际进游戏测过**。四种击飞方向对比后选定 NORMAL 为默认；
+  过程中修了两个真 bug：击退写成覆盖导致多扇门不叠加、NORMAL 方向公式整体取反
+- 2026-11-05：迁到 MidnightConfig，`./gradlew build` 三个模块全绿，
+  `config/funmod.json` 正常生成，枚举序列化为 `"NORMAL"`
+- 2026-11-05：烈焰弹投掷 `./gradlew :funmod:build` 通过，refmap 里
+  `FireChargeItemMixin.useOn` 已映射到 `class_1778.method_7884`（打包后不会静默失效）；
+  开发客户端启动无异常，三个 mod + midnightlib + modmenu 全部加载
+- **烈焰弹的游戏内手感尚未验证**：投掷轨迹、低头投掷会不会炸膛、
+  拿着烈焰弹能不能正常开箱子、冷却遮罩有没有画出来，这几项需要实际进游戏试

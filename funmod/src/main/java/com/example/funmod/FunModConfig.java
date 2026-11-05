@@ -19,6 +19,12 @@ import eu.midnightdust.lib.config.MidnightConfig;
  * 所以以后 funmod 加新功能，参数往这里加、用 {@code category} 分成新的标签页，
  * <b>不要</b>再建第二个配置类。
  *
+ * <h2>字段为什么都加 {@code volatile}</h2>
+ *
+ * 配置界面在**客户端线程**写字段，而门挥扫、烈焰弹这些都是**服务端线程**读。
+ * 单机下两者是同一个 JVM 的不同线程，不加会有可见性问题（服务端一直读到旧值），
+ * 而且 JLS 不保证 {@code double}/{@code float} 的写入是原子的。
+ *
  * <h2>翻译键</h2>
  *
  * 缺了对应的键，界面会直接把键名显示出来（不会崩，但很难看）。格式是从 MidnightLib
@@ -40,26 +46,26 @@ public class FunModConfig extends MidnightConfig {
 	// ---------------------------------------------------------------- 门扇挥扫
 
 	@Entry(category = "doorslam")
-	public static boolean doorSlamEnabled = true;
+	public static volatile boolean doorSlamEnabled = true;
 
 	/**
 	 * 击飞方向算法。用枚举而不是之前的字符串：MidnightConfig 会渲染成循环切换按钮，
 	 * 而且写错值不可能——字符串那套需要 {@code parseMode} 兜底并在日志里警告。
 	 */
 	@Entry(category = "doorslam")
-	public static DoorSlam.KnockbackMode knockbackMode = DoorSlam.KnockbackMode.NORMAL;
+	public static volatile DoorSlam.KnockbackMode knockbackMode = DoorSlam.KnockbackMode.NORMAL;
 
 	@Entry(isSlider = true, min = 0.0D, max = 5.0D, precision = 2, category = "doorslam")
-	public static double horizontalStrength = 1.5D;
+	public static volatile double horizontalStrength = 1.5D;
 
 	@Entry(isSlider = true, min = 0.0D, max = 2.0D, precision = 2, category = "doorslam")
-	public static double verticalStrength = 0.5D;
+	public static volatile double verticalStrength = 0.5D;
 
 	@Entry(isSlider = true, min = 0.5D, max = 4.0D, precision = 2, category = "doorslam")
-	public static double reach = 1.6D;
+	public static volatile double reach = 1.6D;
 
 	@Entry(isSlider = true, min = 0.0D, max = 1.0D, precision = 2, category = "doorslam")
-	public static double angleTolerance = 0.15D;
+	public static volatile double angleTolerance = 0.15D;
 
 	/**
 	 * 水平速度上限。击退是叠加的，所以必须有这个：红石时钟接门、或者多扇门同时拍，
@@ -67,13 +73,44 @@ public class FunModConfig extends MidnightConfig {
 	 * 看起来像功能坏了。
 	 */
 	@Entry(isSlider = true, min = 0.5D, max = 20.0D, precision = 1, category = "doorslam")
-	public static double maxHorizontalSpeed = 4.0D;
+	public static volatile double maxHorizontalSpeed = 4.0D;
+
+	// ---------------------------------------------------------------- 烈焰弹投掷
+
+	@Entry(category = "fireball")
+	public static volatile boolean fireballEnabled = true;
+
+	/**
+	 * 爆炸威力。原版恶魂火球就是 1，所以默认值跟它对齐。
+	 * 0 = 不破坏方块也不点火，只剩伤害和击退；拉高就是苦力怕级别往上。
+	 */
+	@Entry(isSlider = true, min = 0, max = 4, category = "fireball")
+	public static volatile int fireballExplosionPower = 1;
+
+	/**
+	 * 火球在视线前方多远生成。代码里还会再校验一次：如果这个位置上
+	 * 火球的碰撞箱和玩家自己相交（低头投掷时就会），会沿视线继续往外推。
+	 * 所以这个值只是"起码多远"，不是硬保证。
+	 */
+	@Entry(isSlider = true, min = 0.5D, max = 3.0D, precision = 2, category = "fireball")
+	public static volatile double fireballSpawnDistance = 1.0D;
+
+	/** 发射冷却，单位 tick（20 = 1 秒）。防连点器刷屏轰炸。设 0 就是无冷却。 */
+	@Entry(isSlider = true, min = 0, max = 100, category = "fireball")
+	public static volatile int fireballCooldownTicks = 20;
+
+	@Entry(isSlider = true, min = 0.0F, max = 2.0F, precision = 2, category = "fireball")
+	public static volatile float fireballVolume = 1.0F;
+
+	/** 原版恶魂吐球是 1.0，压低一点听着更像"玩家扔的"而不是"旁边有只恶魂"。 */
+	@Entry(isSlider = true, min = 0.5F, max = 2.0F, precision = 2, category = "fireball")
+	public static volatile float fireballPitch = 0.8F;
 
 	// ---------------------------------------------------------------- 视觉与音效
 
 	@Entry(category = "visuals")
-	public static boolean particles = true;
+	public static volatile boolean particles = true;
 
 	@Entry(isSlider = true, min = 0.0F, max = 2.0F, precision = 2, category = "visuals")
-	public static float soundVolume = 1.0F;
+	public static volatile float soundVolume = 1.0F;
 }

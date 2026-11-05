@@ -3,7 +3,8 @@
 	"package": "com.example.funmod.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"DoorBlockMixin"
+		"DoorBlockMixin",
+		"FireChargeItemMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

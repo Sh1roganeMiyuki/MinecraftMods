@@ -7,11 +7,17 @@ Minecraft 1.21.1 + Fabric 小玩法模组的 **Gradle 多模块 monorepo**。
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
-| [impactengine](impactengine/) | **共享库**：通用撞击与破坏结算引擎，不含玩法 | 引擎完成，游戏内待验证 |
-| [funmod](funmod/) | 门扇挥扫冲击等小玩法 | 门挥扫已实现，游戏内待验证 |
-| [spearmod](spearmod/) | 长枪武器与相关附魔，依赖 impactengine | 只有骨架 |
+| [impactengine](impactengine/) | **共享库**：通用撞击与破坏结算引擎，不含玩法 | 引擎完成，已进游戏测过 |
+| [funmod](funmod/) | 门扇挥扫冲击、烈焰弹掷出恶魂大火球 | 门挥扫已实测；烈焰弹已编译，手感待测 |
+| [spearmod](spearmod/) | 长枪武器与相关附魔，依赖 impactengine | 骨架 + 调试命令 |
 
 其他 mod 想用引擎，按 [impactengine/AGENTS.md](impactengine/AGENTS.md) 第一节的两步接上。
+
+## 参数调节
+
+每个 mod 都自带游戏内配置界面（MidnightConfig）：「模组列表 → 某个 mod → 配置」。
+拖滑条点完成就存盘并立即生效，不需重启也不需 reload。需要装
+[Mod Menu](https://modrinth.com/mod/modmenu) 才能看到那个按钮（MidnightLib 已 jar-in-jar 打进产物）。
 
 ## 新建一个 mod
 
