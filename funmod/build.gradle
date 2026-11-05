@@ -7,7 +7,22 @@
 // 依赖坐标和版本都在共享脚本里，这里只有一行。
 apply from: rootProject.file('gradle/config-gui.gradle')
 
-// 需要 funmod 独有的依赖时这样加：
-// dependencies {
-//     modImplementation "some.other:mod:x.y.z"
-// }
+// 跨项目访问 sourceSets 必须在 dependencies 块外先拿到 Project 对象：
+// 块内的 project(...) 返回的是 ProjectDependency，上面根本没有 sourceSets 属性
+def impactEngine = project(':impactengine')
+
+dependencies {
+	// 烈焰弹的爆炸走撞击引擎结算，所以 funmod 依赖 impactengine。
+	//
+	// 必须走 namedElements，不能写 modImplementation project(':impactengine')——
+	// 后者会让 Loom 在【配置阶段】去读对方还没构建出来的 remapped jar 而死锁。
+	// 完整解释见根 AGENTS.md「已知的坑」第 8 条。
+	implementation project(path: ':impactengine', configuration: 'namedElements')
+
+	// 用了 splitEnvironmentSourceSets() 的多项目，还要单独接对方的 client 源集，
+	// 否则 dev 环境里引用不到对方的客户端类
+	clientImplementation impactEngine.sourceSets.client.output
+
+	// 联机时 funmod.jar 和 impactengine.jar 都要装，
+	// 所以 fabric.mod.json 的 depends 里也声明了 impactengine
+}

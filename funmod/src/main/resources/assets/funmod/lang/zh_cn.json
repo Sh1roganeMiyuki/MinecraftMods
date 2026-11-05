@@ -33,10 +33,7 @@
 	"funmod.midnightconfig.soundVolume.tooltip": "盾挡声的音量。设成 0 相当于静音，但仍然会播放（只是听不见）。",
 
 	"funmod.midnightconfig.fireballEnabled": "启用烈焰弹投掷",
-	"funmod.midnightconfig.fireballEnabled.tooltip": "关掉后烈焰弹回到原版行为：右键方块点火，对空右键什么也不发生。",
-
-	"funmod.midnightconfig.fireballExplosionPower": "爆炸威力",
-	"funmod.midnightconfig.fireballExplosionPower.tooltip": "原版恶魂火球就是 1，所以默认跟它对齐。0 = 不破坏方块也不点火，只剩伤害和击退；拉到 4 已经超过苦力怕。",
+	"funmod.midnightconfig.fireballEnabled.tooltip": "关掉后烈焰弹回到原版行为：右键方块点火，对空右键什么也不发生。爆炸本身的数值不在本界面，在 data/funmod/impact_effects/fireball.json 和 Impact Engine 的配置界面里。",
 
 	"funmod.midnightconfig.fireballSpawnDistance": "生成距离",
 	"funmod.midnightconfig.fireballSpawnDistance.tooltip": "火球在视线前方多远生成，防止刚生成就撞到自己的碰撞箱而炸膛。代码里还会再校验一次：低头投掷时这个位置仍可能落在自己身上，那就沿视线继续往外推，所以这个值只是“起码多远”。",
@@ -44,10 +41,10 @@
 	"funmod.midnightconfig.fireballCooldownTicks": "发射冷却（tick）",
 	"funmod.midnightconfig.fireballCooldownTicks.tooltip": "20 tick = 1 秒，防连点器刷屏轰炸。冷却期间右键方块**不会**退化成点火，而是直接被吞掉（箱子、工作台这些在上一步就已经开了，不受影响）。设 0 就是无冷却。",
 
-	"funmod.midnightconfig.fireballVolume": "发射音效音量",
-	"funmod.midnightconfig.fireballVolume.tooltip": "恶魂吐球声的音量。",
+	"funmod.midnightconfig.fireballVolume": "投掷音效音量",
+	"funmod.midnightconfig.fireballVolume.tooltip": "扔出去那一瞬的恶魂吐球声。爆炸声在 fireball.json 的 visuals.sound_volume 里。",
 
-	"funmod.midnightconfig.fireballPitch": "发射音效音调",
+	"funmod.midnightconfig.fireballPitch": "投掷音效音调",
 	"funmod.midnightconfig.fireballPitch.tooltip": "原版恶魂吐球是 1.0。压低一点听着更像“玩家扔的”而不是“旁边有只恶魂”。",
 
 	"funmod.midnightconfig.enum.KnockbackMode.NORMAL": "法线（推离门板）",

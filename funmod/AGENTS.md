@@ -185,19 +185,68 @@ return InteractionResult.sidedSuccess(level.isClientSide);
    不重叠），但**低头投掷**时这个结论不成立——视线朝下，“往前 1 格”落到了自己脚下。
    所以 `safeSpawnPoint` 会检查火球碰撞箱是否和玩家相交，相交就沿视线再推 0.5 格
 
-火球本体完全用原版 `LargeFireball`，所以这些是白送的：爆炸点火、小范围击退、
+火球的**飞行**完全用原版 `LargeFireball`，所以这些是白送的：拖尾烟雾粒子、飞行物理，
 以及**被剑打一下能反弹并转移归属**（`AbstractHurtingProjectile#hurt` 里的逻辑，
 owner 是谁都成立，所以自己也能把自己扔出去的火球打回去）。
 
 击杀计入玩家名下，因为构造器的第二个参数就是 owner。
 
+### 爆炸走撞击引擎，不走原版
+
+`LargeFireballImpactMixin` 把玩家投掷的火球的 `onHit` 接管下来（HEAD + cancel），
+改调 `ImpactEngine.execute`，配置在 `data/funmod/impact_effects/fireball.json`。
+
+**为什么必须换掉，而不是在原版爆炸上再叠点什么**：原版只有一个 `explosionPower`，
+而它同时驱动**破坏范围、实体伤害、击退强度**三件事。想让火球跳得高就得拉大威力，
+于是地上炸出一个大坑；想不留坑就得压威力，于是人也飞不起来。
+在这个模型里“破坏强度”和“击退强度”根本拆不开。
+
+而引擎的配置模型里这两项本来就是分开的字段：
+
+| 想调的东西 | JSON 里的字段 |
+|---|---|
+| 破坏强度 | `blocks.destroy` / `blocks.max_hardness` / `area.radius` |
+| 击退强度 | `knockback.horizontal_strength`（水平）、`knockback.upward_bias`（向上） |
+| 伤害 | `damage.base_amount` |
+| 自伤减免 | `damage.self_damage_multiplier`（0 = 对自己完全免伤） |
+| 把自己也炸飞 | `knockback.exclude_source: false` |
+
+火箭跳需要的“对自己免伤但要推开自己”，正好就是最后两行。
+
+**低头扔为什么能把自己顶上去**：`knockback.mode` 是 `radial`，引擎算水平推力时
+如果实体几乎就在爆心正上方（水平偏移 < 1e-4）会把水平分量归零，
+但 `upward_bias` 照常加上——于是得到一记几乎纯向上的力。
+
+接管之后，为此手写的两个 Mixin（`PlayerFireballDamageMixin` 做自伤减免、
+`LargeFireballLaunchMixin` 做自身弹射）都变成了重复造轮子，已删除。
+
+**几个注意点：**
+
+- 只接管 owner 是 `ServerPlayer` 的火球。恶魂自己吐的走原版路径不动：
+  那是原版平衡的一部分，而且原版那条路径会处理 `mobGriefing` 游戏规则，
+  接管过来就把这条规则绕过去了
+- 注入在 HEAD 并 cancel，所以原版的 `super.onHit`（命中直接 6 点伤害）、
+  `level.explode` 和 `discard()` 全不执行。`discard()` 要自己补上，
+  不然火球不消失；伤害也不会叠两份
+- **JSON 没加载到时原样放行**，退回原版爆炸。宁可手感不对，也不能把火球变成哑弹
+- 爆心用 `result.getLocation()`（命中点）而不是火球中心，更准
+- `direction` 传火球当前的飞行方向，所以 JSON 里把 `shape` 改成 `cone` 时
+  锥体会顺着飞行方向展开，而不是退化成球
+
+改了速度之后引擎自己会做 `hurtMarked = true` + 发 `ClientboundSetEntityMotionPacket`，
+和门挥扫同一个道理：不同步的话客户端会按自己的预测把人拽回原地，
+表现就是“跳了一下又弹回来”。
+
 ### 关于撞击结算引擎
 
 通用引擎已经抽成独立子模块 **`../impactengine`**，完整文档在 `../impactengine/AGENTS.md`。
 
-**funmod 目前不依赖它**，这是有意的：doorslam 是绕门轴的**切线**击飞，
-力度正比于到门轴的距离；引擎做的是**径向/定向**爆发。两套物理模型不一样，
-硬把 doorslam 接到引擎上会丢掉门轴杠杆这个最有意思的手感。
+**funmod 部分依赖它**：烈焰弹的爆炸走引擎（见上），但 **doorslam 刻意不接**。
+理由是两者物理模型不同：doorslam 是绕门轴的**切线**击飞，力度正比于到门轴的距离；
+引擎做的是**径向/定向**爆发。硬把 doorslam 接到引擎上会丢掉门轴杠杆这个最有意思的手感。
+
+因为烈焰弹用了引擎，`build.gradle` 里多了对 `impactengine` 的 `namedElements` 依赖，
+`fabric.mod.json` 的 `depends` 里也声明了它——**联机时 funmod.jar 和 impactengine.jar 都要装**。
 
 哪天门挥扫要加方块破坏、爆炸表现或者状态效果，按 `../impactengine/AGENTS.md`
 第一节的两步接上就行，doorslam 自己的击飞逻辑保持不动。
@@ -215,5 +264,15 @@ owner 是谁都成立，所以自己也能把自己扔出去的火球打回去�
 - 2026-11-05：烈焰弹投掷 `./gradlew :funmod:build` 通过，refmap 里
   `FireChargeItemMixin.useOn` 已映射到 `class_1778.method_7884`（打包后不会静默失效）；
   开发客户端启动无异常，三个 mod + midnightlib + modmenu 全部加载
-- **烈焰弹的游戏内手感尚未验证**：投掷轨迹、低头投掷会不会炸膛、
-  拿着烈焰弹能不能正常开箱子、冷却遮罩有没有画出来，这几项需要实际进游戏试
+- 2026-11-05：烈焰弹的爆炸改走撞击引擎（funmod 因此开始依赖 impactengine）。
+  中间写过两个 Mixin 手动实现自伤减免和自身弹射，后来发现引擎的
+  `damage.self_damage_multiplier` 和 `knockback.exclude_source` 已经涵盖这两件事，已删除。
+  现在只剩 3 个 Mixin，`./gradlew build` 三个模块全绿，
+  refmap 里 `LargeFireballImpactMixin.onHit` 已映射到 `class_1674.method_7488`，
+  `data/funmod/impact_effects/fireball.json` 也确认打进了 jar
+- 一个值得记住的结论：**`Player` 在 1.21.1 里覆写了 `hurt(DamageSource, float)`**
+  （javap 核过）。以后要对玩家受伤做什么，Mixin 必须打在 `Player` 上；
+  打在 `LivingEntity.hurt` 上会编译通过、打包成功、但一次都不触发
+- **烈焰弹的游戏内手感尚未验证**：投掷轨迹、火箭跳能不能真把自己顶上去、
+  自伤是不是真的免了、低头投掷会不会炸膛、拿着烈焰弹能不能正常开箱子、
+  冷却遮罩有没有画出来，这几项需要实际进游戏试

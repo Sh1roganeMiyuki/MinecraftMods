@@ -15,7 +15,7 @@ MinecraftMods/
 ├── .github/workflows/build.yml   CI，一条命令构建所有 mod
 ├── tools/new-mod.ps1    新建 mod 的脚手架
 ├── impactengine/        **共享库**：撞击与破坏结算引擎，给其他 mod 依赖
-├── funmod/              子模块：门扇挥扫冲击
+├── funmod/              子模块：门扇挥扫、烈焰弹投掷（爆炸部分依赖 impactengine）
 └── spearmod/            子模块：长枪（骨架，依赖 impactengine）
 ```
 

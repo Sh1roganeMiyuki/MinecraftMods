@@ -17,7 +17,12 @@ Minecraft 1.21.1 + Fabric 的小玩法模组。
 
 手持烈焰弹右键（对空或对方块都行）直接掷出**恶魂大火球**，而不是原版的原地摩擦点火。
 
-- 完整的原版火球行为：爆炸点火、小范围击退、被剑打一下能反弹并转移归属
+- 飞行部分完全是原版火球：拖尾烟雾、被剑打一下能反弹并转移归属
+- 爆炸点火、小范围击退这些则由撞击引擎结算（见下）
+- **可以当机动道具用**：低头扔就是在脚下引爆，把自己顶上去（火箭跳）。
+  默认对自己免伤但仍会推开自己，两者在 `fireball.json` 里分开调
+- 爆炸走自己的撞击引擎结算，所以**破坏强度和击退强度是两个独立的参数**，
+  不像原版那样被一个 `explosionPower` 绑死
 - 击杀计入投掷者名下
 - 默认 1 秒发射冷却，防连点器刷屏
 - 创造模式不消耗烈焰弹
@@ -29,6 +34,23 @@ Minecraft 1.21.1 + Fabric 的小玩法模组。
 拖滑条、点开关，按完成就存盘并**立即生效**，不需重启也不需 reload。
 
 磁盘上落在 `config/funmod.json`，也可以直接改文件（那样需要重启）。
+
+### 烈焰弹的爆炸数值不在这里
+
+破坏强度、击退强度、伤害、点火、掉落率、粒子音效全在
+`funmod/src/main/resources/data/funmod/impact_effects/fireball.json`，改完在游戏里 `/reload`。
+整体倍率在 **Impact Engine** 的配置界面里（拖滑条立即生效）。
+
+想要的手感对应改哪个字段：
+
+| 想要 | 改这里 |
+|---|---|
+| 炸得更狠 / 坑更大 | `area.radius`、`blocks.max_hardness` |
+| 把人推得更远 | `knockback.horizontal_strength` |
+| 火箭跳跳得更高 | `knockback.upward_bias` |
+| 不留坑，纯机动道具 | `blocks.destroy: false` |
+| 恢复对自己造成伤害 | `damage.self_damage_multiplier: 1.0` |
+| 不再把自己炸飞 | `knockback.exclude_source: true` |
 
 ## 构建
 
@@ -50,5 +72,5 @@ $env:JAVA_HOME = "C:/Users/zhang/.jdks/jdk-25.0.5+8"
 
 ## 联机
 
-服务端和每个客户端都需要安装 Fabric Loader、Fabric API 和本模组，版本保持一致。
+服务端和每个客户端都需要安装 Fabric Loader、Fabric API、**Impact Engine** 和本模组，版本保持一致。
 MidnightLib 已经以 jar-in-jar 形式打进产物，不用单独装。Mod Menu 只影响配置界面，不装也能正常玩。

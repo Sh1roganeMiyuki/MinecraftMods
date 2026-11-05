@@ -1,0 +1,40 @@
+{
+	"area": {
+		"radius": 2.0,
+		"shape": "spherical",
+		"falloff": "linear"
+	},
+
+	"damage": {
+		"base_amount": 8.0,
+		"damage_type": "minecraft:player_explosion",
+		"self_damage_multiplier": 0.0
+	},
+
+	"knockback": {
+		"horizontal_strength": 1.0,
+		"upward_bias": 1.0,
+		"mode": "radial",
+		"exclude_source": false
+	},
+
+	"blocks": {
+		"destroy": true,
+		"max_hardness": 3.0,
+		"immune_tag": "minecraft:wither_immune",
+		"drop_rate": 0.8,
+		"causes_fire": true,
+		"entitize_chance": 0.0
+	},
+
+	"status_effects": [],
+
+	"visuals": {
+		"primary_particle": "minecraft:explosion_emitter",
+		"particle_count": 1,
+		"sound": "minecraft:entity.generic.explode",
+		"sound_volume": 1.0,
+		"sound_pitch": 1.0,
+		"camera_shake": 0.6
+	}
+}

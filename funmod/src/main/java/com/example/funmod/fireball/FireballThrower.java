@@ -1,6 +1,8 @@
 package com.example.funmod.fireball;
 
+import com.example.funmod.FunMod;
 import com.example.funmod.FunModConfig;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -30,12 +32,35 @@ import net.minecraft.world.phys.Vec3;
  * 手里拿着烈焰弹就再也打不开箱子了。而 {@code useOn} 是原版在「方块没消费这次交互」之后
  * 才调用的，所以拦这里天然拿到正确的优先级：能开的照样开，只有本来会点火的那一下改成投掷。
  *
- * <p>火球本身完全用原版 {@link LargeFireball}，所以这些特性是白送的：
- * 爆炸点火、小范围击退、{@code explosionPower} 控制破坏力，以及
- * <b>被剑打一下能反弹并转移归属</b>（{@code AbstractHurtingProjectile#hurt} 里的逻辑，
- * owner 是谁都成立，所以自己也能把自己扔出去的火球打回去）。
+ * <p>火球的<b>飞行</b>完全用原版 {@link LargeFireball}，所以这些特性是白送的：
+ * 拖尾烟雾粒子、飞行物理，以及<b>被剑打一下能反弹并转移归属</b>
+ * （{@code AbstractHurtingProjectile#hurt} 里的逻辑，owner 是谁都成立，
+ * 所以自己也能把自己扔出去的火球打回去）。
+ *
+ * <p>但<b>爆炸</b>不走原版：{@code LargeFireballImpactMixin} 会把玩家投掷的火球的
+ * {@code onHit} 接管下来交给撞击引擎结算，因为原版那一个 {@code explosionPower}
+ * 把破坏、伤害、击退绑在一个数上拆不开。数值全在 {@link #IMPACT_ID} 那份 JSON 里。
  */
 public final class FireballThrower {
+
+	/**
+	 * 爆炸结算用的撞击配置 id，对应 {@code data/funmod/impact_effects/fireball.json}。
+	 *
+	 * <p>破坏强度、击退强度、伤害、自伤减免、点火、掉落率、粒子音效全部在那份 JSON 里，
+	 * 不在 {@link FunModConfig}。原因是原版那一个 {@code explosionPower} 把破坏、伤害、
+	 * 击退三件事绑在一个数上，拆不开；而引擎的配置模型里它们本来就是分开的字段。
+	 */
+	public static final ResourceLocation IMPACT_ID = FunMod.id("fireball");
+
+	/**
+	 * 传给 {@link LargeFireball} 构造器的威力。
+	 *
+	 * <p>正常情况下<b>用不到</b>：玩家投掷的火球爆炸被
+	 * {@code LargeFireballImpactMixin} 接管交给引擎了。保留这个值只为了两个退回路径：
+	 * JSON 没加载到时 Mixin 会原样放行原版爆炸，以及恶魂自己吐的火球。
+	 * 1 就是原版恶魂的值。
+	 */
+	private static final int FALLBACK_EXPLOSION_POWER = 1;
 
 	/** {@code EntityType.FIREBALL} 的尺寸是 1×1，半宽 0.5，用来判生成点会不会撞到自己 */
 	private static final double FIREBALL_HALF_WIDTH = 0.5D;
@@ -104,7 +129,7 @@ public final class FireballThrower {
 
 		// 构造器会把火球摆在 owner 的位置上，所以必须显式 setPos。
 		// 漏掉这一步火球就在玩家脚下方块里生成，当 tick 撞地爆炸——就是"炸膛"。
-		LargeFireball fireball = new LargeFireball(level, player, look, FunModConfig.fireballExplosionPower);
+		LargeFireball fireball = new LargeFireball(level, player, look, FALLBACK_EXPLOSION_POWER);
 		fireball.setPos(at.x, at.y, at.z);
 		level.addFreshEntity(fireball);
 	}

@@ -81,13 +81,6 @@ public class FunModConfig extends MidnightConfig {
 	public static volatile boolean fireballEnabled = true;
 
 	/**
-	 * 爆炸威力。原版恶魂火球就是 1，所以默认值跟它对齐。
-	 * 0 = 不破坏方块也不点火，只剩伤害和击退；拉高就是苦力怕级别往上。
-	 */
-	@Entry(isSlider = true, min = 0, max = 4, category = "fireball")
-	public static volatile int fireballExplosionPower = 1;
-
-	/**
 	 * 火球在视线前方多远生成。代码里还会再校验一次：如果这个位置上
 	 * 火球的碰撞箱和玩家自己相交（低头投掷时就会），会沿视线继续往外推。
 	 * 所以这个值只是"起码多远"，不是硬保证。
@@ -95,10 +88,23 @@ public class FunModConfig extends MidnightConfig {
 	@Entry(isSlider = true, min = 0.5D, max = 3.0D, precision = 2, category = "fireball")
 	public static volatile double fireballSpawnDistance = 1.0D;
 
-	/** 发射冷却，单位 tick（20 = 1 秒）。防连点器刷屏轰炸。设 0 就是无冷却。 */
+	/**
+	 * 发射冷却，单位 tick（20 = 1 秒）。防连点器刷屏轰炸。设 0 就是无冷却。
+	 *
+	 * <p><b>爆炸相关的数值不在这里。</b>破坏强度、击退强度、伤害、自伤减免、点火、
+	 * 掉落率、粒子音效全在 {@code data/funmod/impact_effects/fireball.json}（改完 {@code /reload}），
+	 * 整体倍率在 Impact Engine 的配置界面（拖滑条立即生效）。
+	 *
+	 * <p>为什么不放这里：原版那一个 {@code explosionPower} 把破坏、伤害、击退
+	 * 绑在一个数上，想跳得高就得炸出大坑，拆不开。而引擎的配置模型里
+	 * {@code blocks.*} 和 {@code knockback.*} 本来就是两组独立字段，
+	 * {@code damage.self_damage_multiplier} 和 {@code knockback.exclude_source}
+	 * 则正好就是火箭跳需要的“对自己免伤但要推开自己”。
+	 */
 	@Entry(isSlider = true, min = 0, max = 100, category = "fireball")
 	public static volatile int fireballCooldownTicks = 20;
 
+	/** 投掷那一瞬的恶魂吐球声音量。爆炸声在 JSON 的 {@code visuals.sound_volume} 里。 */
 	@Entry(isSlider = true, min = 0.0F, max = 2.0F, precision = 2, category = "fireball")
 	public static volatile float fireballVolume = 1.0F;
 
