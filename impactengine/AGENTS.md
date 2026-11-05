@@ -254,7 +254,68 @@ id 由文件路径决定（`data/spearmod/impact_effects/tnt_spear_impact.json` 
 
 ---
 
-## 五、安全底线（不可配置、不可绕过）
+## 五、全局调参层（ImpactTuning）
+
+游戏内配置界面，入口「模组列表 → Impact Engine → 配置」，磁盘上落在 `config/impactengine.json`。
+拖滑条点完成就**立即生效**，不用 `/reload`、不用重启。
+
+这一层和第四节的 JSON 是**两个不同的东西**，不要搞混：
+
+| | JSON 配置（`ImpactEffect`） | 调参层（`ImpactTuning`） |
+|---|---|---|
+| 作用范围 | 一份对应一种武器/效果 | 全局，乘在所有效果上 |
+| 给的数 | 绝对值（半径 3.5、伤害 12） | 倍率和开关（伤害 ×1.0） |
+| 改完生效 | `/reload` | 立即 |
+| 谁提供 | 各玩法 mod 自己的数据包 | 本模块内置 |
+
+**为什么只做倍率不做绝对值：** 一份 JSON 对应一种武器。全局滑条要是给绝对值，
+调一次就把长枪和爆破箭压成同一个数，两者本来该有的手感差异全没了。
+各武器之间的**相对**强弱属于 JSON，整体**绝对**强弱属于调参层，两者正交。
+
+### 对后续模组自动生效
+
+调参层作用在 `ImpactEngine.execute()` **内部**，而不是作用在某份具体配置上。
+所以任何 mod、任何 JSON、任何用 Builder 现场构造的 `ImpactEffect`，只要走 execute
+就自动受这些滑条影响——**新 mod 不需要依赖 `ImpactTuning`、不需要注册任何东西**。
+
+### 字段
+
+| 分类 | 字段 | 语义 |
+|---|---|---|
+| 战斗与物理 | `enabled` | 总开关，关掉后 execute 直接返回空结果 |
+| | `damageMultiplier` | 乘在 `base_amount` 上，0 = 只击退不掉血 |
+| | `radiusMultiplier` | 乘在 `radius` 上，同时放大实体判定范围 |
+| | `knockbackMultiplier` | 同时乘在水平推力和上抛分量上 |
+| 环境破坏 | `destroyBlocks` | 三态：跟随配置 / 强制开 / 强制关 |
+| | `hardnessCeiling` | 生效值 = `min(JSON 的 max_hardness, 这个值)` |
+| | `entitizeBlocks` | 三态，同上；强制开 = 每个方块都飞 |
+| 视觉与特效 | `particleDensity` | 乘在 `particle_count` 上 |
+| | `screenShake` | 关掉后改走常规粒子/声音通道 |
+| | `volumeMultiplier` | 乘在 `sound_volume` 上 |
+
+`hardnessCeiling` 刻意**只能收紧不能放宽**：默认 10.0 对绝大多数配置等于“由 JSON 决定”，
+往下拖才是限制。想炸黑曜石（硬度 50）属于某把武器的设定，应该写进那份 JSON，
+而不是用全局滑条把整个地图都变成可炸的。
+
+### 两个已知的不精确之处
+
+**1. `particleDensity` 和 `volumeMultiplier` 只在关掉 `screenShake` 时生效。**
+屏幕震动是通过原版爆炸包（`ClientboundExplodePacket`）实现的，那个包把震动、粒子、声音
+打包在一起发，**没有粒子数量和音量字段**。想要精确控制这两项就把震动关掉，
+引擎会改走 `sendParticles` + `playSound`。这一点写进了字段的 tooltip。
+
+**2. `radiusMultiplier` 拉很高时会出现“人被炸飞了但方块没坏”。**
+那是第六节的 16 格扫描硬上限在起作用，不是 bug。实体判定不受那个上限影响。
+
+### 字段为什么都加了 `volatile`
+
+配置界面在**客户端线程**写字段，而结算逻辑在**服务端线程**读。单机下两者是同一个 JVM
+的不同线程，不加 `volatile` 会有两个问题：可见性（服务端可能一直读到旧值），以及
+撕裂读（JLS 不保证 `double`/`float` 的写入是原子的）。
+
+---
+
+## 六、安全底线（不可配置、不可绕过）
 
 写在 `ImpactEngine` 里，JSON 改不动：
 
@@ -269,7 +330,7 @@ id 由文件路径决定（`data/spearmod/impact_effects/tnt_spear_impact.json` 
 
 ---
 
-## 六、实现细节踩过的坑
+## 七、实现细节踩过的坑
 
 - `BlockPos.betweenClosed(int...)` 返回 `Iterable`，**没有** `.stream()`；要接 Stream 得用
   `betweenClosedStream(...)`。而且它给的是复用的 `MutableBlockPos`，
@@ -281,7 +342,7 @@ id 由文件路径决定（`data/spearmod/impact_effects/tnt_spear_impact.json` 
 
 ---
 
-## 七、文件
+## 八、文件
 
 ```
 src/main/java/com/example/impactengine/
@@ -289,12 +350,13 @@ src/main/java/com/example/impactengine/
 ├── ImpactEngine.java              execute() 结算：方块 / 实体 / 表现
 ├── ImpactEffects.java             数据包加载器，/reload 热重载
 ├── ImpactEnchantmentEffect.java   附魔衔接层
-└── ImpactEngineMod.java           入口，注册加载器和附魔效果类型
+├── ImpactTuning.java              全局调参层（游戏内配置界面）
+└── ImpactEngineMod.java           入口，注册配置、加载器和附魔效果类型
 ```
 
 ---
 
-## 八、验证状态
+## 九、验证状态
 
 - 2026-11-04：从 funmod 抽成独立子模块，跨模块依赖跑通，`./gradlew build` 三个模块全绿
 - jar 内容核对过：引擎 17 个 class 在 `impactengine`，两份 JSON 在 `spearmod`，funmod 无残留

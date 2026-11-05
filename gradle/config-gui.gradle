@@ -1,0 +1,30 @@
+// 配置 GUI 的公共依赖。任何 mod 想用 MidnightConfig，在自己的 build.gradle 里加一行：
+//
+//     apply from: rootProject.file('gradle/config-gui.gradle')
+//
+// 做成共享脚本而不是每个 mod 各抄四行依赖，是为了让版本号只有一个出处
+// （根 gradle.properties 的 midnightlib_version / modmenu_version）。
+// 升级 MidnightLib 时改一处，所有 mod 一起生效——独立写就会漏。
+//
+// 脚手架 tools/new-mod.ps1 会自动生成这一行，新 mod 不需要知道这些坐标。
+
+dependencies {
+	// MidnightConfig：注解式配置 + 自动生成 GUI。
+	//
+	// include 是 jar-in-jar，把库打进本 mod 的 jar，玩家不用单独装 MidnightLib。
+	// 多个 mod 同时 include 同一个库是 Fabric 的标准做法（MidnightLib 官方文档就是这么教的），
+	// Loader 按 mod id 去重，只会真正加载一份，不会因为重复而报 Duplicate mod。
+	modImplementation "eu.midnightdust:midnightlib:${midnightlib_version}"
+	include "eu.midnightdust:midnightlib:${midnightlib_version}"
+
+	// Mod Menu：模组列表里那个"配置"按钮。
+	//
+	// 不需要写任何 ModMenuApi 实现：MidnightLib 的 fabric.mod.json 自带
+	// "modmenu" 入口点（MidnightLib$ModMenuInit），它会遍历 MidnightConfig.configInstances，
+	// 给每个调用过 init() 的 mod 自动注册一个配置界面工厂。
+	//
+	// compileOnly + runtimeOnly 而不是 implementation：没装 Mod Menu 时配置照样从文件读、
+	// 照样生效，只是游戏里少了那个按钮。不该因为一个可选的界面入口就变成硬依赖。
+	modCompileOnly "com.terraformersmc:modmenu:${modmenu_version}"
+	modRuntimeOnly "com.terraformersmc:modmenu:${modmenu_version}"
+}

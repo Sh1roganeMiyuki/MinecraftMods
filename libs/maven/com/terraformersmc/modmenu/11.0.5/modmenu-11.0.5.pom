@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.terraformersmc</groupId>
+  <artifactId>modmenu</artifactId>
+  <version>11.0.5</version>
+  <packaging>jar</packaging>
+  <name>Mod Menu</name>
+  <description>
+    Vendored copy of modmenu-11.0.5.jar from maven.terraformersmc.com.
+    That maven is reachable, but the copy is kept here so builds and CI stay
+    hermetic and never depend on a third-party maven being up.
+  </description>
+</project>

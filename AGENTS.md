@@ -9,6 +9,8 @@ MinecraftMods/
 ├── build.gradle         所有 mod 的公共配置（Loom、依赖、仓库源、打包、发布）
 ├── gradle.properties    版本号、JDK 路径、group 前缀
 ├── gradlew, gradle/     全仓库唯一一套 wrapper
+├── gradle/config-gui.gradle   共享脚本：一行给 mod 接上配置界面
+├── libs/maven/          内置的第三方 mod 库（MidnightLib、Mod Menu），详见 libs/README.md
 ├── LICENSE              全仓库共享
 ├── .github/workflows/build.yml   CI，一条命令构建所有 mod
 ├── tools/new-mod.ps1    新建 mod 的脚手架
@@ -61,6 +63,65 @@ dependencies {
 漏了它，开发环境跑得好好，发给朋友就报缺失依赖。
 
 联机时每个人要装两个 jar（你的 mod + impactengine）。
+
+---
+
+## 游戏内配置界面（每个 mod 都有）
+
+用的是 **MidnightConfig**（MidnightLib）+ **Mod Menu**。入口：游戏里「模组列表 → 某个 mod → 配置」。
+拖滑条、点开关，按「完成」就存盘并**立即生效**，不需 reload、不需重启。
+
+### 给一个 mod 接上配置界面
+
+脚手架生成的 mod **已经接好了**。手动接也就四步：
+
+1. `<mod>/build.gradle` 加一行：`apply from: rootProject.file('gradle/config-gui.gradle')`
+2. 建一个 `public class XxxConfig extends MidnightConfig`，字段写 `@Entry public static volatile`
+3. 主类 `onInitialize` 里调 `MidnightConfig.register(MOD_ID, XxxConfig.class)`
+4. `assets/<modid>/lang/zh_cn.json` 补翻译键
+
+**不需要写任何 Mod Menu 胶水代码。** MidnightLib 自己的 `fabric.mod.json` 就声明了
+`modmenu` 入口点（`MidnightLib$ModMenuInit`），它会遍历 `MidnightConfig.configInstances`，
+给每个调过 `register()` 的 mod 自动挂上配置界面工厂。这一点是从字节码里确认的，
+不是推测——`getProvidedConfigScreenFactories()` 里直接 `configInstances.forEach(...)`。
+
+### 三条硬规矩
+
+**1. 一个 mod 只能有一个配置类。** `configInstances` 按 modid 索引，
+同一个 modid 注册第二个会顶掉第一个。加新功能就往现有配置类里加字段，
+用 `@Entry(category = "xxx")` 分新的标签页。
+
+**2. 没代码读的字段不要加。** 界面上拖了什么都不会发生，比没这个滑条更让人困惑。
+脚手架生成的模板里只放了一个 `enabled` 总开关，而那个开关主类真的会读。
+
+**3. `register()` 必须在任何“如果配置关了就 return”之前。**
+否则一旦在配置里把 mod 关掉，下次启动就再也打不开配置界面、也没法开回来。
+
+### 翻译键格式
+
+从 MidnightLib 字节码的常量池里挖出来的，写错不会报错，但界面会直接显示键名：
+
+| 用途 | 键 |
+|---|---|
+| 界面标题 | `<modid>.midnightconfig.title` |
+| 条目名 | `<modid>.midnightconfig.<字段名>` |
+| 悬浮说明 | `<modid>.midnightconfig.<字段名>.tooltip` |
+| 分类标签页 | `<modid>.midnightconfig.category.<分类名>` |
+| 枚举取值 | `<modid>.midnightconfig.enum.<枚举类简名>.<常量名>` |
+
+最后一条容易踩：第二段是 `dataType.getSimpleName()`，也就是**枚举类名**而不是字段名。
+枚举渲染成循环切换按钮，比用字符串安全（写错值不可能），所以优先用枚举。
+
+只提供 `zh_cn.json`。要用英文界面就再补一份 `en_us.json`，键名完全一样。
+
+### 引擎的全局调参层（ImpactTuning）
+
+`impactengine` 里有一份特殊配置：它不是某把武器的参数，而是**乘在所有撞击效果上的全局倍率**。
+因为它作用在 `ImpactEngine.execute()` 内部，所以任何 mod、任何 JSON、任何用 Builder
+现场构造的 `ImpactEffect` 都自动受它影响——**新 mod 不需要做任何接入工作就能被调参**。
+
+刻意只提供倍率和开关、不提供绝对值：一份 JSON 对应一种武器，全局滑条要是给绝对值，
+调一次就把长枪和爆破箭压成同一个数了。各武器之间的相对强弱属于 JSON，整体强弱属于调参层。
 
 ---
 
@@ -215,6 +276,44 @@ dependencies {
 `"impactengine": "*"` 声明**。漏了它开发环境跑得好好，发给朋友就报缺失依赖。
 
 ---
+
+### 9. Modrinth 的 maven 对本项目完全不可用，第三方 mod 库要内置
+
+想拉 MidnightLib 时会发现 `api.modrinth.com/maven` 对所有坐标都返回 404：
+
+```
+ERR 404  /maven/mavenmods/midnightlib/maven-metadata.xml
+ERR 404  /maven/mavenmods/midnightlib/1.10.0/midnightlib-1.10.0.jar
+ERR 404  /maven/mavenmods/fabric-api/maven-metadata.xml   ← 对照组，同样 404
+```
+
+连 `fabric-api` 这种主流项目都 404，说明不是坐标写错，是这个端点本身不通。
+但 Modrinth 的 **API 和 CDN 是通的**，所以做法是：用 API 查版本 → 从 CDN 下 jar →
+按 Maven 目录布局放进 `libs/maven/`，手写一份最小 POM。具体步骤和坐标表在 `libs/README.md`。
+
+两个注意项：
+
+- POM 里**不要声明依赖**。MidnightLib 原本依赖 `fabric-resource-loader-v0`，
+  写进去会让 Gradle 试图从这个本地仓库解析 Fabric 构件而失败（fabric-api 已经提供了它）
+- 版本号里**不要带 `+`**（别写 `1.10.0+1.21.1`）。`+` 在 URL 里要转义成 `%2B`，
+  Gradle 解析本地文件仓库时容易对不上路径
+
+`maven.terraformersmc.com`（Mod Menu）是通的，但同样内置了一份，让构建和 CI 都不依赖
+任何第三方 maven 在线。`maven.fabricmc.net` 在这台机器上本来就不稳定，再挂两个不稳定源
+只会让“能不能编译”变成看运气。
+
+### 10. 静态字段初始化顺序（已经踩过三次）
+
+`static final` 字段按**声明顺序**初始化，引用到还没初始化的字段会拿到 `null`。
+这个错编译期、CI 全都报不出来，只会在运行时炸。本项目已经因此崩过三次：
+
+1. `INSTANCE` 声明在 `GSON` 前面，`super(GSON, ...)` 拿到 null，进世界就 NPE
+2. Codec 里用 `xmap` 把 `Optional.empty()` 转成 `null`，而 DFU 的 `DataResult.Success`
+   内部用 `Optional.of()` 包结果，字段为 null 直接 NPE（可空字段要用 `Optional` 当 record 组件）
+3. `PARTICLE_CODEC` 声明在 `CODEC` 后面，而 `CODEC` 会间接读到它，`ExceptionInInitializerError`
+
+写带静态字段的类时，把被依赖的字段（尤其是各种 Codec）**声明在前面**，
+或者直接在构造器/`super()` 里现场构造，从根上消除顺序依赖。
 
 ## 环境事实
 

@@ -1,6 +1,7 @@
 package com.example.funmod.doorslam;
 
 import com.example.funmod.FunMod;
+import com.example.funmod.FunModConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -83,8 +84,9 @@ public final class DoorSlam {
 		if (level.isClientSide) {
 			return;
 		}
-		DoorSlamConfig config = FunMod.DOOR_SLAM;
-		if (!config.enabled) {
+		// 直接读 FunModConfig 的静态字段：配置界面点"完成"就写回这些字段，
+		// 所以下一次开关门立刻用新值，不需要任何 reload
+		if (!FunModConfig.doorSlamEnabled) {
 			return;
 		}
 		BlockState state = level.getBlockState(pos);
@@ -99,27 +101,29 @@ public final class DoorSlam {
 			return;
 		}
 
-		Swing swing = Swing.of(state, anchor, open, config);
+		Swing swing = Swing.of(state, anchor, open);
 
 		AABB area = new AABB(
-				swing.hinge().x - config.reach, anchor.getY(), swing.hinge().z - config.reach,
-				swing.hinge().x + config.reach, anchor.getY() + DOOR_HEIGHT, swing.hinge().z + config.reach);
+				swing.hinge().x - FunModConfig.reach, anchor.getY(),
+				swing.hinge().z - FunModConfig.reach,
+				swing.hinge().x + FunModConfig.reach, anchor.getY() + DOOR_HEIGHT,
+				swing.hinge().z + FunModConfig.reach);
 		List<Entity> candidates = level.getEntities((Entity) null, area, DoorSlam::canBeSlammed);
 
 		int hits = 0;
 		for (Entity target : candidates) {
-			if (slam(target, swing, config)) {
+			if (slam(target, swing)) {
 				hits++;
 			}
 		}
 		if (hits > 0) {
-			feedback(level, anchor, swing, config);
+			feedback(level, anchor, swing);
 			FunMod.LOGGER.debug("[door-slam] {} 在 {} 扫中 {} 个实体（方向模式 {}）",
 					open ? "开门" : "关门", anchor.toShortString(), hits, swing.mode());
 		}
 	}
 
-	/** 击飞方向的算法，对应配置项 {@code knockbackMode} */
+	/** 击飞方向的算法，对应配置项 {@code FunModConfig.knockbackMode} */
 	public enum KnockbackMode {
 		/** 切线 v = ω × r，物理最准，但扇形边缘会把实体推向门轴一侧 */
 		TANGENTIAL,
@@ -129,18 +133,6 @@ public final class DoorSlam {
 		NORMAL,
 		/** 从门轴往外推，永远远离门轴 */
 		RADIAL
-	}
-
-	/** 大小写不敏感地解析模式名，认不出来返回 null，让调用方决定怎么兜底 */
-	public static KnockbackMode parseMode(String name) {
-		if (name == null) {
-			return null;
-		}
-		try {
-			return KnockbackMode.valueOf(name.trim().toUpperCase(Locale.ROOT));
-		} catch (IllegalArgumentException e) {
-			return null;
-		}
 	}
 
 	/**
@@ -157,7 +149,7 @@ public final class DoorSlam {
 	private record Swing(Vec3 hinge, Vec3 closedDir, Vec3 openDir, double spin, Vec3 sweep,
 			Vec3 normal, KnockbackMode mode) {
 
-		static Swing of(BlockState state, BlockPos anchor, boolean open, DoorSlamConfig config) {
+		static Swing of(BlockState state, BlockPos anchor, boolean open) {
 			Direction facing = state.getValue(DoorBlock.FACING);
 			Direction side = state.getValue(DoorBlock.HINGE) == DoorHingeSide.LEFT
 					? facing.getCounterClockWise()
@@ -190,9 +182,7 @@ public final class DoorSlam {
 			// 方向朝方块内部，不是朝外
 			Vec3 normal = vector(open ? side : facing);
 
-			KnockbackMode parsed = parseMode(config.knockbackMode);
-			return new Swing(hinge, closed, opened, spin, sweep, normal,
-					parsed == null ? KnockbackMode.TANGENTIAL : parsed);
+			return new Swing(hinge, closed, opened, spin, sweep, normal, FunModConfig.knockbackMode);
 		}
 
 		/** 按当前模式算出击飞方向，返回单位水平向量 */
@@ -212,22 +202,23 @@ public final class DoorSlam {
 	 *
 	 * @return 是否真的命中（落在门扇扫过的扇形内）
 	 */
-	private static boolean slam(Entity target, Swing swing, DoorSlamConfig config) {
+	private static boolean slam(Entity target, Swing swing) {
 		Vec3 offset = target.position().subtract(swing.hinge());
 		double radius = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
-		if (radius > config.reach || radius < 1.0E-4D) {
+		if (radius > FunModConfig.reach || radius < 1.0E-4D) {
 			return false;
 		}
 
 		Vec3 radial = new Vec3(offset.x / radius, 0.0D, offset.z / radius);
 		// 门扇只扫过 closedDir 与 openDir 夹出的那 90°，扇形外的实体（多半在墙里）不该挨打
-		if (radial.dot(swing.closedDir()) < -config.angleTolerance
-				|| radial.dot(swing.openDir()) < -config.angleTolerance) {
+		if (radial.dot(swing.closedDir()) < -FunModConfig.angleTolerance
+				|| radial.dot(swing.openDir()) < -FunModConfig.angleTolerance) {
 			return false;
 		}
 
 		Vec3 push = swing.pushDirection(radial);
-		double horizontal = config.horizontalStrength * Mth.clamp(radius, LEVERAGE_MIN, LEVERAGE_MAX);
+		double horizontal = FunModConfig.horizontalStrength
+				* Mth.clamp(radius, LEVERAGE_MIN, LEVERAGE_MAX);
 		Vec3 motion = target.getDeltaMovement();
 
 		// 水平分量是**叠加**而不是覆盖：两扇邻接的门同时拍、或者门加上别的击退源，
@@ -238,15 +229,15 @@ public final class DoorSlam {
 
 		// 上限，防红石时钟接门把实体发射到世界外
 		double flat = Math.sqrt(nextX * nextX + nextZ * nextZ);
-		if (flat > config.maxHorizontalSpeed) {
-			double scale = config.maxHorizontalSpeed / flat;
+		if (flat > FunModConfig.maxHorizontalSpeed) {
+			double scale = FunModConfig.maxHorizontalSpeed / flat;
 			nextX *= scale;
 			nextZ *= scale;
 		}
 
 		target.setDeltaMovement(
 				nextX,
-				Math.max(motion.y, 0.0D) + config.verticalStrength,
+				Math.max(motion.y, 0.0D) + FunModConfig.verticalStrength,
 				nextZ);
 
 		// 只改速度不同步的话，客户端会按自己预测的位置把玩家拽回去
@@ -315,14 +306,14 @@ public final class DoorSlam {
 		return name.isEmpty() ? fmt(v) : name;
 	}
 
-	private static void feedback(Level level, BlockPos anchor, Swing swing, DoorSlamConfig config) {
+	private static void feedback(Level level, BlockPos anchor, Swing swing) {
 		level.playSound(null, anchor, SoundEvents.SHIELD_BLOCK, SoundSource.BLOCKS,
-				config.soundVolume, 0.85F + level.getRandom().nextFloat() * 0.3F);
+				FunModConfig.soundVolume, 0.85F + level.getRandom().nextFloat() * 0.3F);
 
-		if (config.particles && level instanceof ServerLevel server) {
+		if (FunModConfig.particles && level instanceof ServerLevel server) {
 			// 扇形的角平分线中点，大致就是门扇拍中东西的位置
 			Vec3 mid = swing.hinge()
-					.add(swing.closedDir().add(swing.openDir()).normalize().scale(config.reach * 0.5D))
+					.add(swing.closedDir().add(swing.openDir()).normalize().scale(FunModConfig.reach * 0.5D))
 					.add(0.0D, 1.0D, 0.0D);
 			server.sendParticles(ParticleTypes.CRIT, mid.x, mid.y, mid.z, 14, 0.35D, 0.9D, 0.35D, 0.05D);
 			server.sendParticles(ParticleTypes.SMOKE, mid.x, mid.y, mid.z, 8, 0.3D, 0.8D, 0.3D, 0.01D);

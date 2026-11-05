@@ -1,0 +1,41 @@
+{
+	"impactengine.midnightconfig.title": "撞击引擎配置",
+
+	"impactengine.midnightconfig.category.combat": "战斗与物理",
+	"impactengine.midnightconfig.category.destruction": "环境破坏",
+	"impactengine.midnightconfig.category.visuals": "视觉与特效",
+
+	"impactengine.midnightconfig.enabled": "启用撞击引擎",
+	"impactengine.midnightconfig.enabled.tooltip": "总开关。关掉后所有撞击效果（任何 mod、任何配置）都直接返回空结果，用来对比\"有引擎\"和\"没引擎\"的差别。",
+
+	"impactengine.midnightconfig.damageMultiplier": "伤害倍率",
+	"impactengine.midnightconfig.damageMultiplier.tooltip": "乘在每份 JSON 的 base_amount 上。0 表示只击退不造成伤害。注意各武器之间的相对强弱仍由 JSON 决定，这里只改整体强弱。",
+
+	"impactengine.midnightconfig.radiusMultiplier": "半径倍率",
+	"impactengine.midnightconfig.radiusMultiplier.tooltip": "乘在 JSON 的 radius 上，同时放大实体判定范围。方块破坏另有 16 格硬上限，所以倍率拉很高时会出现\"人被炸飞了但方块没坏\"，那是上限在起作用，不是 bug。",
+
+	"impactengine.midnightconfig.knockbackMultiplier": "击退倍率",
+	"impactengine.midnightconfig.knockbackMultiplier.tooltip": "同时乘在水平推力和上抛分量上。设成 0 就是只掉血不击飞。",
+
+	"impactengine.midnightconfig.destroyBlocks": "破坏方块",
+	"impactengine.midnightconfig.destroyBlocks.tooltip": "跟随配置＝由每份 JSON 的 blocks.destroy 决定；强制开／强制关则一票覆盖所有配置。基岩等硬度为负的方块、以及 wither_immune / dragon_immune 标签的方块永远炸不掉，这一条覆盖不了。",
+
+	"impactengine.midnightconfig.hardnessCeiling": "硬度天花板",
+	"impactengine.midnightconfig.hardnessCeiling.tooltip": "生效值取 min(JSON 的 max_hardness, 这个值)，所以默认 10.0 对多数配置等于\"由 JSON 决定\"，往下拖才是收紧。刻意只能收紧不能放宽：想炸黑曜石属于某把武器的设定，应该写进那份 JSON，而不是用全局滑条把整个地图都变成可炸的。",
+
+	"impactengine.midnightconfig.entitizeBlocks": "抛射碎块",
+	"impactengine.midnightconfig.entitizeBlocks.tooltip": "把被破坏的方块变成带初速度的下落方块飞出去，纯视觉、不产生掉落物。跟随配置＝用 JSON 的 entitize_chance；强制开＝每个方块都飞。",
+
+	"impactengine.midnightconfig.particleDensity": "粒子浓度",
+	"impactengine.midnightconfig.particleDensity.tooltip": "乘在 JSON 的 particle_count 上。只在关闭下面的\"屏幕震动\"时生效：震动是通过原版爆炸包实现的，那个包把震动、粒子、声音打包在一起发，没有粒子数量字段。",
+
+	"impactengine.midnightconfig.screenShake": "屏幕震动",
+	"impactengine.midnightconfig.screenShake.tooltip": "关掉后引擎改走 sendParticles + playSound 的常规通道，此时\"粒子浓度\"和\"爆炸音量\"才精确生效。想要原版爆炸那种镜头晃动就开着。",
+
+	"impactengine.midnightconfig.volumeMultiplier": "爆炸音量",
+	"impactengine.midnightconfig.volumeMultiplier.tooltip": "乘在 JSON 的 sound_volume 上。和粒子浓度一样，只在关闭屏幕震动时生效，理由见那一条的说明。",
+
+	"impactengine.midnightconfig.enum.Override.FROM_JSON": "跟随配置",
+	"impactengine.midnightconfig.enum.Override.FORCE_ON": "强制开启",
+	"impactengine.midnightconfig.enum.Override.FORCE_OFF": "强制关闭"
+}

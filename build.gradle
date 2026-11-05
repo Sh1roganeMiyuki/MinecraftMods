@@ -18,6 +18,13 @@ subprojects {
 	group = "${mod_group_base}.${project.name.replace('-', '_')}"
 
 	repositories {
+		// 仓库内置的第三方 mod 库（MidnightLib、Mod Menu）。
+		// Modrinth 的 maven 对本项目全 404（连 fabric-api 对照组都 404），
+		// 所以 jar 直接放在仓库里离线解析，来源和升级步骤见 libs/README.md。
+		maven {
+			name = 'Vendored Libs'
+			url = rootProject.file('libs/maven').toURI()
+		}
 		// 本地引导仓库：funmod 预取过一份 Fabric 构件放在自己的 .maven-local 里。
 		// 目录不存在时自动跳过，所以其他 mod 不受影响。
 		def bootstrap = file('.maven-local')
@@ -51,11 +58,13 @@ subprojects {
 		}
 	}
 
-	// 引导仓库必须在最前，否则仍会先去联网拉那些本地已经有的构件
-	def bootstrapRepo = repositories.findByName('Bootstrap Local')
-	if (bootstrapRepo != null) {
-		repositories.remove(bootstrapRepo)
-		repositories.add(0, bootstrapRepo)
+	// 两个本地仓库都提到最前，否则 Gradle 仍会先去联网拉那些本地已经有的构件
+	['Bootstrap Local', 'Vendored Libs'].each { repoName ->
+		def localRepo = repositories.findByName(repoName)
+		if (localRepo != null) {
+			repositories.remove(localRepo)
+			repositories.add(0, localRepo)
+		}
 	}
 
 	loom {

@@ -6,7 +6,12 @@
 .DESCRIPTION
     多模块架构下新 mod 很轻：不需要 Gradle wrapper、settings.gradle、gradle.properties、
     .gitignore、LICENSE 这些外壳，公共配置全在仓库根的 build.gradle 里。
-    这个脚本只生成 mod 自己的东西，一共 7 个文件。
+    这个脚本只生成 mod 自己的东西，一共 9 个文件。
+
+    生成的 mod **自带游戏内配置界面**（MidnightConfig + Mod Menu）：一个配置类、
+    一份中文翻译、build.gradle 里一行 apply、主类里一行 register，都已经写好了。
+    往配置类里加字段就能在「模组列表 → 本 mod → 配置」里拖滑条，改完立即生效。
+    约定和坑见生成的 AGENTS.md，以及仓库根的 AGENTS.md。
 
     生成完立刻可用，在仓库根执行：
         ./gradlew :<modid>:build
@@ -88,9 +93,11 @@ if ($Description -match '["\\]' -or $DisplayName -match '["\\]') {
 
 $rootPackage = "$groupBase.$segment"
 $packagePath = $rootPackage -replace '\.', '/'
+$configClass = "${ClassName}Config"
 
 Write-Host "新 mod   : $ModId" -ForegroundColor Cyan
 Write-Host "主类     : $rootPackage.$ClassName"
+Write-Host "配置类   : $rootPackage.$configClass（游戏内可拖滑条）"
 Write-Host "MC 版本  : $mcVersion（继承自根 gradle.properties）"
 Write-Host "目录     : $targetDir"
 
@@ -101,7 +108,9 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $replacements = @{
 	'__MOD_ID__'       = $ModId
 	'__CLASS_NAME__'   = $ClassName
+	'__CONFIG_CLASS__' = $configClass
 	'__ROOT_PACKAGE__' = $rootPackage
+	'__ROOT_PACKAGE_PATH__' = $packagePath
 	'__DISPLAY_NAME__' = $DisplayName
 	'__DESCRIPTION__'  = $Description
 	'__MC_VERSION__'   = $mcVersion
@@ -133,8 +142,12 @@ Write-Tpl 'build.gradle' @'
 // 公共配置（Loom、Minecraft/Fabric 依赖、仓库源与排序、Java 21、打包、发布、group 派生）
 // 全在仓库根 build.gradle 的 subprojects 块里。
 //
-// 这个文件目前没有内容，但它必须存在——settings.gradle 靠它识别子模块。
-//
+// 这个文件即使什么都不写也必须存在——settings.gradle 靠它识别子模块。
+
+// 游戏内配置界面（MidnightConfig + Mod Menu）。
+// 依赖坐标和版本都在共享脚本里，所以升级 MidnightLib 不需要改这个文件。
+apply from: rootProject.file('gradle/config-gui.gradle')
+
 // 需要本 mod 独有的依赖时这样加：
 // dependencies {
 //     modImplementation "some.other:mod:x.y.z"
@@ -166,7 +179,11 @@ Write-Tpl 'src/main/resources/fabric.mod.json' @'
 		"fabricloader": ">=0.20.1",
 		"minecraft": "~__MC_VERSION__",
 		"java": ">=21",
-		"fabric-api": "*"
+		"fabric-api": "*",
+		"midnightlib": ">=1.10.0"
+	},
+	"suggests": {
+		"modmenu": ">=11.0.0"
 	}
 }
 '@
@@ -187,6 +204,7 @@ Write-Tpl "src/main/resources/$ModId.mixins.json" @'
 Write-Tpl "src/main/java/$packagePath/$ClassName.java" @'
 package __ROOT_PACKAGE__;
 
+import eu.midnightdust.lib.config.MidnightConfig;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
@@ -198,12 +216,92 @@ public class __CLASS_NAME__ implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		// 游戏内配置界面。登记之后 MidnightLib 自带的 modmenu 入口点会自动
+		// 给本 mod 挂上"配置"按钮，不需要写 ModMenuApi 实现。
+		//
+		// 必须在检查 enabled 之前登记，否则一旦在配置里把 mod 关掉，
+		// 下次启动就再也打不开配置界面、也没法把它开回来了。
+		MidnightConfig.register(MOD_ID, __CONFIG_CLASS__.class);
+
+		if (!__CONFIG_CLASS__.enabled) {
+			LOGGER.info("__DISPLAY_NAME__ 已在配置里禁用");
+			return;
+		}
+
+		// 在这里注册物品、方块、事件、命令
 		LOGGER.info("__DISPLAY_NAME__ loaded");
 	}
 
 	public static ResourceLocation id(String path) {
 		return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
 	}
+}
+'@
+
+# 配置类。只给一个真的会被读的总开关，刷一堆没人读的字段反而有害：
+# 界面上拖了没反应，比没这个滑条更让人困惑
+Write-Tpl "src/main/java/$packagePath/$configClass.java" @'
+package __ROOT_PACKAGE__;
+
+import eu.midnightdust.lib.config.MidnightConfig;
+
+/**
+ * __DISPLAY_NAME__ 的可调参数，游戏里在「模组列表 → __DISPLAY_NAME__ → 配置」调。
+ *
+ * <h2>约定</h2>
+ *
+ * <ul>
+ *   <li><b>一个 mod 只能有一个配置类。</b>{@code MidnightConfig.configInstances} 按 modid 索引，
+ *       同一个 modid 注册第二个会顶掉第一个。加新功能就往这里加字段、
+ *       用 {@code category} 分新的标签页，不要再建配置类</li>
+ *   <li>字段必须 {@code public static}（MidnightConfig 的约定）。游戏逻辑直接读它们，
+ *       界面点"完成"时写回并存盘，所以<b>改完立即生效</b>，不需 reload 也不需重启</li>
+ *   <li>跨线程读的字段加 {@code volatile}：界面在客户端线程写、玩法逻辑在服务端线程读，
+ *       不加会有可见性问题，而且 JLS 不保证 double/float 的写入是原子的</li>
+ *   <li><b>没代码读的字段不要加。</b>界面上拖了什么都不会发生，比没这个滑条更糟</li>
+ * </ul>
+ *
+ * <h2>加了字段要补翻译键</h2>
+ *
+ * 在 {@code assets/__MOD_ID__/lang/zh_cn.json} 里补，缺了界面会直接把键名显示出来：
+ *
+ * <ul>
+ *   <li>条目名 {@code __MOD_ID__.midnightconfig.<字段名>}</li>
+ *   <li>悬浮说明 {@code __MOD_ID__.midnightconfig.<字段名>.tooltip}</li>
+ *   <li>分类标签页 {@code __MOD_ID__.midnightconfig.category.<分类名>}</li>
+ *   <li>枚举取值 {@code __MOD_ID__.midnightconfig.enum.<枚举类简名>.<常量名>}
+ *       —— 第二段是枚举<b>类名</b>而不是字段名</li>
+ * </ul>
+ */
+public class __CONFIG_CLASS__ extends MidnightConfig {
+
+	/** 总开关。关掉后本 mod 不注册任何东西，行为回到原版。 */
+	@Entry(category = "general")
+	public static volatile boolean enabled = true;
+
+	// 加滑块：
+	// @Entry(isSlider = true, min = 0.5D, max = 3.0D, precision = 2, category = "combat")
+	// public static volatile double someStrength = 1.0D;
+	//
+	// 加开关：
+	// @Entry(category = "visuals")
+	// public static volatile boolean someEffect = true;
+	//
+	// 加枚举（界面渲染成循环切换按钮，比字符串安全：写错值不可能）：
+	// public enum SomeMode { A, B }
+	// @Entry(category = "combat")
+	// public static volatile SomeMode someMode = SomeMode.A;
+}
+'@
+
+Write-Tpl "src/main/resources/assets/$ModId/lang/zh_cn.json" @'
+{
+	"__MOD_ID__.midnightconfig.title": "__DISPLAY_NAME__ 配置",
+
+	"__MOD_ID__.midnightconfig.category.general": "常规",
+
+	"__MOD_ID__.midnightconfig.enabled": "启用本模组",
+	"__MOD_ID__.midnightconfig.enabled.tooltip": "总开关。关掉后本模组不注册任何东西，行为回到原版。改完立即生效，不用重启。"
 }
 '@
 
@@ -287,6 +385,26 @@ $env:JAVA_HOME = "__JAVA_HOME__"
 - Mixin 清单在 `src/main/resources/__MOD_ID__.mixins.json`，类放 `__ROOT_PACKAGE__.mixin`。
   refmap 由根 build.gradle 的 `useLegacyMixinAp = true` 保证生成，别在子模块里重复配置
 - 需要本 mod 独有的依赖或仓库源，写进本目录的 `build.gradle`，不要去改根配置
+
+## 游戏内配置界面
+
+本 mod 自带一个 MidnightConfig 配置界面，入口：游戏里「模组列表 → __DISPLAY_NAME__ → 配置」
+（需要装 Mod Menu，已在 fabric.mod.json 里声明为 suggests）。
+
+- 配置类：`src/main/java/__ROOT_PACKAGE_PATH__/__CONFIG_CLASS__.java`
+- 磁盘位置：`config/__MOD_ID__.json`（首次启动自动生成）
+- 翻译：`src/main/resources/assets/__MOD_ID__/lang/zh_cn.json`
+- 依赖由 `build.gradle` 里那一行 `apply from: rootProject.file('gradle/config-gui.gradle')` 提供，
+  MidnightLib 以 jar-in-jar 形式打进产物，玩家不需要单独装
+
+加一个可调参数只要三步，全程不需要重启游戏：
+
+1. 配置类里加 `@Entry` 字段（`public static volatile`）
+2. `zh_cn.json` 里补 `<字段名>` 和 `<字段名>.tooltip` 两个键；新开了 `category` 还要补标签页的键
+3. 玩法代码里直接读 `__CONFIG_CLASS__.<字段名>`
+
+完整约定（一个 mod 只能有一个配置类、枚举的翻译键用类名不是字段名、
+为什么不能先判断 enabled 再 register）写在配置类自己的 javadoc 里。
 
 ## 工作方式
 

@@ -26,17 +26,20 @@ import java.util.Map;
  *
  * <pre>
  * /spear list                                  列出已加载的撞击配置
- * /spear impact &lt;id&gt;                           等级 1，打视线命中的位置
+ * /spear impact                                 用配置界面里的默认值（id / 等级 / 距离）
+ * /spear impact &lt;id&gt;                           指定配置，等级和距离用默认值
  * /spear impact &lt;id&gt; &lt;level&gt;                   指定附魔等级，用来试 LevelBasedValue 的成长曲线
  * /spear impact &lt;id&gt; &lt;level&gt; &lt;distance&gt;        指定最大取点距离
  * </pre>
  *
  * <p>只对 OP 开放（权限等级 2），联机时不至于谁都能炸地图。
+ *
+ * <p>无参数的那个分支是为了调数值：反复触发同一个效果时不想每次都敲一长串
+ * 命名空间，把 id 存在配置界面里改起来更快。效果本身的数值不在这里调，
+ * 而是在 Impact Engine 的配置界面（全局倍率）或直接改 JSON（各武器的绝对值）。
  */
 public final class SpearCommands {
 
-	/** 视线取不到方块时，退回到眼前这么远 */
-	private static final double DEFAULT_DISTANCE = 4.0D;
 	private static final double MAX_DISTANCE = 64.0D;
 	private static final int MAX_LEVEL = 10;
 
@@ -44,31 +47,74 @@ public final class SpearCommands {
 	}
 
 	public static void register() {
-		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-				dispatcher.register(Commands.literal("spear")
-						.requires(source -> source.hasPermission(2))
-						.then(Commands.literal("list")
-								.executes(SpearCommands::list))
-						.then(Commands.literal("impact")
-								.then(Commands.argument("id", ResourceLocationArgument.id())
-										.executes(ctx -> impact(ctx, 1, DEFAULT_DISTANCE))
-										.then(Commands.argument("level", IntegerArgumentType.integer(1, MAX_LEVEL))
-												.executes(ctx -> impact(ctx,
-														IntegerArgumentType.getInteger(ctx, "level"),
-														DEFAULT_DISTANCE))
-												.then(Commands.argument("distance",
-														DoubleArgumentType.doubleArg(0.0D, MAX_DISTANCE))
-														.executes(ctx -> impact(ctx,
-																IntegerArgumentType.getInteger(ctx, "level"),
-																DoubleArgumentType.getDouble(ctx, "distance")))))))));
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+			// 四层嵌套的 .then() 链式写法要在末尾数十几个右括号，错一个就是编译失败，
+			// 而且错了还很难看出是哪一层。拆成自内向外的中间变量，每个分支占一行，
+			// 以后加子命令也不用重新数括号。
+			var distanceNode = Commands.argument("distance", DoubleArgumentType.doubleArg(0.0D, MAX_DISTANCE))
+					.executes(ctx -> fire(ctx, impactId(ctx), levelOf(ctx),
+							DoubleArgumentType.getDouble(ctx, "distance")));
+
+			var levelNode = Commands.argument("level", IntegerArgumentType.integer(1, MAX_LEVEL))
+					.executes(ctx -> fire(ctx, impactId(ctx), levelOf(ctx), SpearConfig.defaultDistance))
+					.then(distanceNode);
+
+			var idNode = Commands.argument("id", ResourceLocationArgument.id())
+					.executes(ctx -> fire(ctx, impactId(ctx), SpearConfig.defaultLevel, SpearConfig.defaultDistance))
+					.then(levelNode);
+
+			var impactNode = Commands.literal("impact")
+					.executes(SpearCommands::impactWithDefaults)
+					.then(idNode);
+
+			dispatcher.register(Commands.literal("spear")
+					.requires(source -> source.hasPermission(2))
+					.then(Commands.literal("list").executes(SpearCommands::list))
+					.then(impactNode));
+		});
 	}
 
-	private static int impact(CommandContext<CommandSourceStack> context, int level, double distance)
+	private static ResourceLocation impactId(CommandContext<CommandSourceStack> ctx) {
+		return ResourceLocationArgument.getId(ctx, "id");
+	}
+
+	private static int levelOf(CommandContext<CommandSourceStack> ctx) {
+		return IntegerArgumentType.getInteger(ctx, "level");
+	}
+
+	/**
+	 * 无参数分支：用 {@link SpearConfig} 里的默认值。
+	 *
+	 * <p>id 故意不去解析字符串，而是拿它去已加载的配置表里比对。
+	 * 两个好处：不需要担心非法 id 抛出什么异常，而且比中的 id 一定是真的加载了的，
+	 * 报错信息也就只有一种（没找到），不会分成"格式错"和"没加载"两种让人猜。
+	 */
+	private static int impactWithDefaults(CommandContext<CommandSourceStack> context)
 			throws CommandSyntaxException {
+		String wanted = SpearConfig.defaultImpactId.trim();
+		ResourceLocation id = ImpactEffects.getAll().keySet().stream()
+				.filter(candidate -> candidate.toString().equals(wanted))
+				.findFirst()
+				.orElse(null);
+		if (id == null) {
+			context.getSource().sendFailure(Component.literal(
+					"配置里的默认撞击 id '" + wanted + "' 没加载，用 /spear list 看看有哪些"));
+			return 0;
+		}
+		return fire(context, id, SpearConfig.defaultLevel, SpearConfig.defaultDistance);
+	}
+
+	/**
+	 * 真正执行一次撞击。
+	 *
+	 * <p>叫 {@code fire} 而不是 {@code impact}：命令树里已经有 {@code Commands.literal("impact")}，
+	 * 方法同名虽然不报错（两者在不同命名空间），但读起来很容易把“子命令”和“执行函数”搞混。
+	 */
+	private static int fire(CommandContext<CommandSourceStack> context, ResourceLocation id,
+			int level, double distance) throws CommandSyntaxException {
 		CommandSourceStack source = context.getSource();
 		ServerLevel serverLevel = source.getLevel();
 		ServerPlayer player = source.getPlayerOrException();
-		ResourceLocation id = ResourceLocationArgument.getId(context, "id");
 
 		ImpactEffect effect = ImpactEffects.get(id).orElse(null);
 		if (effect == null) {

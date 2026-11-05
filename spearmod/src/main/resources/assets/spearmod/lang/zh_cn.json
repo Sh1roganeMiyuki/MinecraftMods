@@ -1,0 +1,14 @@
+{
+	"spearmod.midnightconfig.title": "长枪配置",
+
+	"spearmod.midnightconfig.category.debug": "调试命令",
+
+	"spearmod.midnightconfig.defaultImpactId": "默认撞击配置",
+	"spearmod.midnightconfig.defaultImpactId.tooltip": "执行 /spear impact 不带参数时用哪份配置。调数值时最常反复触发同一个效果，存在这里就不用每次敲一长串命名空间。用 /spear list 看有哪些可选。",
+
+	"spearmod.midnightconfig.defaultLevel": "默认附魔等级",
+	"spearmod.midnightconfig.defaultLevel.tooltip": "影响 JSON 里所有 minecraft:linear 形式的数值（半径、伤害、击退都按等级成长）。spear_thrust 就是这种写法，改这个等级能直接看出成长曲线。",
+
+	"spearmod.midnightconfig.defaultDistance": "默认取点距离",
+	"spearmod.midnightconfig.defaultDistance.tooltip": "视线没打中方块时，退回到眼前这么远。只有球形和圆柱判定用得上，锥形的顶点固定在玩家眼睛位置。"
+}

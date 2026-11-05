@@ -1,0 +1,38 @@
+{
+	"funmod.midnightconfig.title": "Fun Mod 配置",
+
+	"funmod.midnightconfig.category.doorslam": "门扇挥扫",
+	"funmod.midnightconfig.category.visuals": "视觉与音效",
+
+	"funmod.midnightconfig.doorSlamEnabled": "启用门扇挥扫",
+	"funmod.midnightconfig.doorSlamEnabled.tooltip": "关掉后门恢复原版行为，不产生任何冲击。改完立即生效，不用重启。",
+
+	"funmod.midnightconfig.knockbackMode": "击飞方向算法",
+	"funmod.midnightconfig.knockbackMode.tooltip": "决定实体被门拍中后往哪个方向飞。NORMAL 实测手感最好：门板只有 3/16 厚、贴在方块的一条边上，推向的是从那条边往方块外的方向，所以不会把人拍进门轴那侧的墙里。",
+
+	"funmod.midnightconfig.horizontalStrength": "水平力度",
+	"funmod.midnightconfig.horizontalStrength.tooltip": "基础水平初速度，单位格/刻。实际值还要乘 0.8~1.2 的杠杆系数（刚体旋转时线速度正比于半径），所以贴着门轴几乎不动，门扇外缘打得最狠。",
+
+	"funmod.midnightconfig.verticalStrength": "上抛力度",
+	"funmod.midnightconfig.verticalStrength.tooltip": "固定向上初速度，单位格/刻。调高会把实体挑起来，调成 0 就是纯平推。",
+
+	"funmod.midnightconfig.reach": "判定半径",
+	"funmod.midnightconfig.reach.tooltip": "以门轴为圆心的水平判定半径，单位格。超过这个距离的实体不会被扫到。",
+
+	"funmod.midnightconfig.angleTolerance": "扇形边界容差",
+	"funmod.midnightconfig.angleTolerance.tooltip": "门扇只扫过 90° 的象限，容差越大越容易把门框两侧的实体也一起扫进去。设成 0 就是严格的四分之一圆。",
+
+	"funmod.midnightconfig.maxHorizontalSpeed": "水平速度上限",
+	"funmod.midnightconfig.maxHorizontalSpeed.tooltip": "击退是叠加的，所以必须有上限：红石时钟接门、或者多扇门同时拍，不设上限能把实体发射到世界外。超限时按比例缩回，方向不变。",
+
+	"funmod.midnightconfig.particles": "打击粒子",
+	"funmod.midnightconfig.particles.tooltip": "命中时在门扇拍中位置生成暴击和烟雾粒子。空挥不产生粒子。",
+
+	"funmod.midnightconfig.soundVolume": "命中音效音量",
+	"funmod.midnightconfig.soundVolume.tooltip": "盾挡声的音量。设成 0 相当于静音，但仍然会播放（只是听不见）。",
+
+	"funmod.midnightconfig.enum.KnockbackMode.NORMAL": "法线（推离门板）",
+	"funmod.midnightconfig.enum.KnockbackMode.TANGENTIAL": "切线（物理精确）",
+	"funmod.midnightconfig.enum.KnockbackMode.SWEEP": "横扫（门扇位移）",
+	"funmod.midnightconfig.enum.KnockbackMode.RADIAL": "径向（远离门轴）"
+}

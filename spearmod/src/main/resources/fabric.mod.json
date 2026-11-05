@@ -23,6 +23,10 @@
 		"minecraft": "~1.21.1",
 		"java": ">=21",
 		"fabric-api": "*",
-		"impactengine": "*"
+		"impactengine": "*",
+		"midnightlib": ">=1.10.0"
+	},
+	"suggests": {
+		"modmenu": ">=11.0.0"
 	}
 }

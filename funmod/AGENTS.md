@@ -56,8 +56,9 @@
 - 客户端为了交互预测也会跑 `useWithoutItem`，所以入口第一件事是 `level.isClientSide` 直接返回
 - 对玩家施加冲力后必须 `hurtMarked = true` + 发 `ClientboundSetEntityMotionPacket`，
   否则客户端会按自己的预测把玩家拽回去
-- 参数在 `config/funmod/door-slam.json`，缺文件会自动写一份完整模板。
-  **改完不用重启游戏**，输 `/funmod reload` 就重新读
+- 参数在 `FunModConfig`（MidnightConfig），游戏里「模组列表 → Fun Mod → 配置」拖滑条调，
+  磁盘上落在 `config/funmod.json`。**改完立即生效**，不需 reload 也不需重启：
+  界面点“完成”就把值写回静态字段，而 `DoorSlam` 每次都是直接读这些字段
 - 默认水平初速度 = `horizontalStrength(1.5)` × 杠杆系数 `[0.8, 1.2]`，落在 1.2~1.8 block/tick；
   杠杆系数来自刚体旋转 `v = ω × r`，所以贴门轴几乎不动、门扇外缘打得最狠
 
@@ -97,7 +98,8 @@
 当时没看懂为什么反，还加了个 `normalFlip` 开关想靠取反绕过去——那是错的做法，
 开关只能把错的方向换到另一种情况上，真正要做的是把公式写对。
 
-写错的 `knockbackMode` 会退回默认值并在日志里警告，不会静默失效。
+`knockbackMode` 现在是**枚举**而不是字符串，所以写错值根本不可能（以前用字符串时
+需要 `parseMode` 兜底并在日志里警告）。配置界面上它渲染成一个循环切换按钮。
 
 ### 击退是叠加的，但有速度上限
 
@@ -109,26 +111,25 @@
 叠加带来一个新风险：红石时钟接门会把实体越抽越快。所以有 `maxHorizontalSpeed`
 （默认 4.0 block/tick）做封顶，超过就按比例缩回去，方向不变。
 
-### 调手感用的命令
+### 调手感
+
+参数全部在配置界面里调（「模组列表 → Fun Mod → 配置」），分两个标签页：
+门扇挥扫、视觉与音效。击飞方向算法就是里面的 `knockbackMode`，
+点一下循环切换，关掉界面立刻开关门就能对比手感。
+
+剩下一个命令：
 
 ```
-/funmod config            看当前生效的参数
-/funmod reload            重读 config 文件
-/funmod mode SWEEP        切击飞方向算法
 /funmod probe             对着门用，把该门的几何量和各模式方向打出来
 ```
 
-`mode` 可选值：`NORMAL` / `TANGENTIAL` / `SWEEP` / `RADIAL`，大小写不敏感。
-
-`probe` 是调方向时加的：它会对着你看的门输出 FACING、HINGE、门轴坐标、
+需要 OP（权限等级 2）。`probe` 会对着你看的门输出 FACING、HINGE、门轴坐标、
 closedDir/openDir，以及 NORMAL 和 SWEEP 在开门/关门两种情况下各推向哪个罗盘方位。
 方向这种东西光在纸上推很容易和实际观感对不上，把算出来的向量摆到游戏现象旁边比最快。
+它算的是门的**几何量**，不在任何配置里，所以配置界面代替不了它。
 
-`mode` 改的是**内存里**的值，下次 `reload` 会被文件覆盖回去。
-它的意义是：几种方向哪个手感好，得站在门前反复开关门对比，
-能即时切换比“改文件 → reload → 再试”快得多。选定后再把值写回配置文件固定下来。
-
-命令需要 OP（权限等级 2）。
+这里曾经还有 `reload`、`config`、`mode` 三个子命令，迁到 MidnightConfig 之后全删了：
+`reload` 没有“重读”这一步了，`config` 和界面重复，`mode` 界面上的循环按钮更快。
 
 ### 关于撞击结算引擎
 

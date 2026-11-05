@@ -43,13 +43,17 @@ import java.util.List;
  * <p><b>只能在服务端调用。</b>伤害、击退、方块破坏都是服务端权威逻辑，
  * 客户端表现由这里的 {@code sendParticles} / {@code playSound} / 爆炸包广播出去。
  *
- * <p>安全底线（不可配置、不可绕过）：
+ * <p>安全底线（不可配置、不可绕过，连 {@link ImpactTuning} 也碰不到）：
  * <ul>
  *   <li>硬度为负的方块一律免疫——基岩、屏障、末地传送门框架、命令方块等</li>
  *   <li>{@code wither_immune} / {@code dragon_immune} 标签的方块一律免疫</li>
  *   <li>流体、空气不处理</li>
  *   <li>方块扫描半径上限 {@value #MAX_BLOCK_SCAN_RADIUS}，防止配置写错把服务器卡死</li>
  * </ul>
+ *
+ * <p>{@link ImpactTuning} 是叠在这之上的全局调参层（游戏内配置界面拖滑条），
+ * 只做倍率和开关，不改上面任何一条底线。它作用在 execute 内部而不是某份配置上，
+ * 所以任何 mod 的任何 {@link ImpactEffect} 都自动受它影响，新 mod 不需要做任何接入工作。
  */
 public final class ImpactEngine {
 
@@ -96,18 +100,20 @@ public final class ImpactEngine {
 		if (level.isClientSide) {
 			throw new IllegalStateException("ImpactEngine 只能在服务端调用");
 		}
-		if (effect == null) {
+		if (effect == null || !ImpactTuning.enabled) {
 			return Result.EMPTY;
 		}
 
 		int level_ = Math.max(1, enchantmentLevel);
-		float radius = effect.area().radiusAt(level_);
+		// 半径倍率在这里一次性乘进去，后面的实体判定、方块破坏、距离衰减
+		// 全部基于放大后的半径，不会出现"伤害范围变大了但方块还按原半径找"的不一致
+		float radius = effect.area().radiusAt(level_) * (float) ImpactTuning.radiusMultiplier;
 		if (radius <= 0.0F) {
 			return Result.EMPTY;
 		}
 
 		Vec3 dir = normalizeOrNull(direction);
-		int destroyed = effect.blocks().destroy()
+		int destroyed = ImpactTuning.shouldDestroy(effect.blocks().destroy())
 				? destroyBlocks(level, effect, center, dir, source, radius, level_)
 				: 0;
 		int hit = affectEntities(level, effect, center, dir, source, radius, level_);
@@ -133,6 +139,8 @@ public final class ImpactEngine {
 				.orElse(null);
 		RandomSource random = level.getRandom();
 		ImpactEffect.Area area = effect.area();
+		// 调参层的三态覆盖，循环外算一次就够了
+		float entitizeChance = ImpactTuning.entitizeChance(config.entitizeChance());
 
 		// 离中心远的方块先破坏，避免支撑结构先塌导致上面的方块判定异常。
 		// 注意 betweenClosed 返回 Iterable，要用 betweenClosedStream 才能接 Stream；
@@ -156,7 +164,7 @@ public final class ImpactEngine {
 				continue;
 			}
 
-			if (config.entitizeChance() > 0.0F && random.nextFloat() < config.entitizeChance()) {
+			if (entitizeChance > 0.0F && random.nextFloat() < entitizeChance) {
 				launchAsFallingBlock(level, pos, state, center, random);
 			} else {
 				boolean drop = random.nextFloat() < config.dropRate();
@@ -183,9 +191,10 @@ public final class ImpactEngine {
 		if (state.isAir() || !state.getFluidState().isEmpty()) {
 			return true;
 		}
-		// 基岩、屏障、末地传送门框架、命令方块等硬度为 -1，无条件免疫
+		// 基岩、屏障、末地传送门框架、命令方块等硬度为 -1，无条件免疫。
+		// 这一条在调参层之前判，所以 hardnessCeiling 拉到多高都炸不动它们
 		float hardness = state.getDestroySpeed(level, pos);
-		if (hardness < 0.0F || hardness > config.maxHardness()) {
+		if (hardness < 0.0F || hardness > ImpactTuning.effectiveMaxHardness(config.maxHardness())) {
 			return true;
 		}
 		if (state.is(BlockTags.WITHER_IMMUNE) || state.is(BlockTags.DRAGON_IMMUNE)) {
@@ -221,7 +230,8 @@ public final class ImpactEngine {
 
 		DamageSource damageSource = buildDamageSource(level, effect, source, center);
 		ImpactEffect.Area area = effect.area();
-		float baseDamage = effect.damage().amountAt(enchantmentLevel);
+		float baseDamage = effect.damage().amountAt(enchantmentLevel)
+				* (float) ImpactTuning.damageMultiplier;
 		int hit = 0;
 
 		for (Entity target : candidates) {
@@ -265,8 +275,8 @@ public final class ImpactEngine {
 	private static void applyKnockback(Entity target, ImpactEffect effect, Vec3 center,
 			@Nullable Vec3 direction, float falloff, int enchantmentLevel) {
 		ImpactEffect.Knockback config = effect.knockback();
-		double horizontal = config.horizontalAt(enchantmentLevel) * falloff;
-		double upward = config.upwardAt(enchantmentLevel);
+		double horizontal = config.horizontalAt(enchantmentLevel) * falloff * ImpactTuning.knockbackMultiplier;
+		double upward = config.upwardAt(enchantmentLevel) * ImpactTuning.knockbackMultiplier;
 
 		Vec3 push;
 		if (config.mode() == ImpactEffect.KnockbackMode.DIRECTIONAL && direction != null) {
@@ -332,7 +342,12 @@ public final class ImpactEngine {
 
 	private static void broadcast(ServerLevel level, ImpactEffect effect, Vec3 center) {
 		ImpactEffect.Visuals visuals = effect.visuals();
-		if (visuals.cameraShake() > 0.0F) {
+		// 关掉屏幕震动就把 shake 压成 0，于是落到下面的常规通道。
+		// 这不是多余的一步：原版爆炸包（ClientboundExplodePacket）把震动、粒子、声音
+		// 打包在一起发，没有粒子数量和音量字段，所以只有走常规通道
+		// particleDensity 和 volumeMultiplier 才真的生效
+		float shake = ImpactTuning.screenShake ? visuals.cameraShake() : 0.0F;
+		if (shake > 0.0F) {
 			// 走原版爆炸包：一次拿到粒子、声音和屏幕震动。
 			// knockback 传 ZERO，因为击退由 applyKnockback 逐实体精确计算，不能叠加两份；
 			// toBlow 传空表，避免客户端以为方块被破坏而闪一下。
@@ -342,7 +357,7 @@ public final class ImpactEngine {
 				if (player.distanceToSqr(center.x, center.y, center.z) <= BROADCAST_RANGE_SQR) {
 					player.connection.send(new ClientboundExplodePacket(
 							center.x, center.y, center.z,
-							visuals.cameraShake(),
+							shake,
 							List.of(),
 							Vec3.ZERO,
 							Explosion.BlockInteraction.TRIGGER_BLOCK,
@@ -352,15 +367,19 @@ public final class ImpactEngine {
 			return;
 		}
 
-		// 不要震动时走常规通道，粒子数量可以精确控制
-		if (visuals.particleCount() > 0) {
+		// 不要震动时走常规通道，粒子数量和音量可以精确控制
+		int particleCount = (int) (visuals.particleCount() * ImpactTuning.particleDensity);
+		if (particleCount > 0) {
 			level.sendParticles(visuals.primaryParticle(),
-					center.x, center.y, center.z, visuals.particleCount(),
+					center.x, center.y, center.z, particleCount,
 					0.5D, 0.5D, 0.5D, 0.0D);
 		}
 		if (!visuals.silent()) {
-			level.playSound(null, BlockPos.containing(center), visuals.sound(), SoundSource.BLOCKS,
-					visuals.soundVolume(), visuals.soundPitch());
+			float volume = visuals.soundVolume() * (float) ImpactTuning.volumeMultiplier;
+			if (volume > 0.0F) {
+				level.playSound(null, BlockPos.containing(center), visuals.sound(), SoundSource.BLOCKS,
+						volume, visuals.soundPitch());
+			}
 		}
 	}
 

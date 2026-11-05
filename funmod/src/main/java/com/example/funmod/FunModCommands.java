@@ -1,8 +1,6 @@
 package com.example.funmod;
 
 import com.example.funmod.doorslam.DoorSlam;
-import com.example.funmod.doorslam.DoorSlamConfig;
-import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -11,18 +9,24 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
 /**
- * 调手感用的命令。
+ * 诊断命令。
  *
  * <pre>
- * /funmod reload        重新读 config/funmod/door-slam.json，改了数值不用重启游戏
- * /funmod mode &lt;名字&gt;    直接切击飞方向算法，连文件都不用改
  * /funmod probe         对着门用，把该门的几何量和各模式方向打出来
- * /funmod config        把当前生效的参数打出来
  * </pre>
  *
- * <p>{@code mode} 子命令存在的意义：三种击飞方向哪种手感好，光看代码想不出来，
- * 得站在门前反复开关门对比。能即时切换比"改文件 → reload → 再试"快得多。
- * 注意它改的是内存里的值，下次 {@code reload} 会被文件覆盖回去。
+ * <p>这里曾经还有 {@code reload}、{@code config}、{@code mode} 三个子命令，
+ * 迁移到 MidnightConfig 之后全部删掉了：
+ *
+ * <ul>
+ *   <li>{@code reload} —— MidnightConfig 点「完成」就直接写回静态字段并存盘，没有"重读"这一步</li>
+ *   <li>{@code config} —— 配置界面本身就是当前值的权威视图，再打印一遍是重复</li>
+ *   <li>{@code mode} —— 界面上 {@code knockbackMode} 是个循环切换按钮，比记命令参数快</li>
+ * </ul>
+ *
+ * 留下来的 {@code probe} 不一样：它算的是**门的几何量**（门轴在哪、closedDir/openDir
+ * 指向哪、各种模式会往哪个罗盘方向推），这些信息不在任何配置里，界面也给不出来。
+ * 调方向手感时对着一扇门打一次，比在纸上推导可靠得多。
  */
 public final class FunModCommands {
 
@@ -33,18 +37,6 @@ public final class FunModCommands {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
 				dispatcher.register(Commands.literal("funmod")
 						.requires(source -> source.hasPermission(2))
-						.then(Commands.literal("reload")
-								.executes(ctx -> {
-									FunMod.DOOR_SLAM = DoorSlamConfig.load();
-									ctx.getSource().sendSuccess(() -> Component.literal(
-											"已重新加载门挥扫配置：" + describe()), true);
-									return 1;
-								}))
-						.then(Commands.literal("config")
-								.executes(ctx -> {
-									ctx.getSource().sendSuccess(() -> Component.literal(describe()), true);
-									return 1;
-								}))
 						.then(Commands.literal("probe")
 								.executes(ctx -> {
 									ServerPlayer player = ctx.getSource().getPlayerOrException();
@@ -56,33 +48,6 @@ public final class FunModCommands {
 									String report = DoorSlam.describe(player.level(), blockHit.getBlockPos());
 									ctx.getSource().sendSuccess(() -> Component.literal(report), false);
 									return 1;
-								}))
-						.then(Commands.literal("mode")
-								.then(Commands.argument("mode", StringArgumentType.word())
-										.executes(ctx -> {
-											String name = StringArgumentType.getString(ctx, "mode");
-											DoorSlam.KnockbackMode mode = DoorSlam.parseMode(name);
-											if (mode == null) {
-												ctx.getSource().sendFailure(Component.literal(
-														"未知模式 '" + name + "'，可选：TANGENTIAL 切线、"
-																+ "SWEEP 横扫、RADIAL 径向"));
-												return 0;
-											}
-											FunMod.DOOR_SLAM.knockbackMode = mode.name();
-											ctx.getSource().sendSuccess(() -> Component.literal(
-													"击飞方向已切到 " + mode + "，去开关门试试"), true);
-											return 1;
-										})))));
-	}
-
-	private static String describe() {
-		DoorSlamConfig c = FunMod.DOOR_SLAM;
-		return "力度 " + c.horizontalStrength
-				+ "，上抛 " + c.verticalStrength
-				+ "，半径 " + c.reach
-				+ "，容差 " + c.angleTolerance
-				+ "，速度上限 " + c.maxHorizontalSpeed
-				+ "，方向模式 " + c.knockbackMode
-				+ (c.enabled ? "" : "（已禁用）");
+								}))));
 	}
 }
