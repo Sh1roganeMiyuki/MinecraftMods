@@ -28,19 +28,29 @@ jobs:
         # 过滤掉注释行（文档里引用 level.explode() 是正常的）。
         # 真有正当理由时，在那一行加 impact-engine-exempt: <原因> 就能过。
         run: |
+          files=$(find */src -name '*.java' 2>/dev/null | wc -l | tr -d ' ')
+          raw=$(grep -rnE '\.explode\(' --include='*.java' */src 2>/dev/null | wc -l | tr -d ' ')
           hits=$(grep -rnE '\.explode\(' --include='*.java' */src 2>/dev/null \
             | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)' \
             | grep -v 'impact-engine-exempt' || true)
-          if [ -n "$hits" ]; then
-            echo "::error::以下代码绕过 ImpactEngine 直接调用了 explode"
-            echo "$hits"
-            echo ""
-            echo "所有自定义爆破必须走 impactengine，见 AGENTS.md「硬性规则」第 1 条。"
-            echo "接法三步在 impactengine/AGENTS.md。确实有正当理由（物理模型不同）时，"
-            echo "在那一行加注释 impact-engine-exempt: <原因>。"
+          echo "explode guard: scanned $files java files, $raw raw mention(s) incl. comments"
+          # 自检：扫不到文件就说明 glob 失效了（比如目录结构变了），
+          # 那时候守卫会永远“通过”。一个静默失效的检查比没有检查更糟，所以直接 fail。
+          if [ "$files" -eq 0 ]; then
+            echo "::error::explode guard scanned 0 java files - the */src glob matched nothing"
             exit 1
           fi
-          echo "explode 守卫通过：没有绕过 ImpactEngine 的调用"
+          if [ -n "$hits" ]; then
+            echo "::error::these calls bypass ImpactEngine and use Level#explode directly"
+            echo "$hits"
+            echo ""
+            echo "Every custom explosion must go through impactengine."
+            echo "See AGENTS.md hard rule 1; the three-step recipe is in impactengine/AGENTS.md."
+            echo "For a genuine exception (different physics model) add on that same line:"
+            echo "    // impact-engine-exempt: <reason>"
+            exit 1
+          fi
+          echo "explode guard: passed"
       - name: build all mods
         # --continue：一个 mod 编译失败也继续构建其余的，一次就能看到所有问题
         # runner 上没有本机那条 org.gradle.java.home，用 setup-java 给的 JAVA_HOME 覆盖
